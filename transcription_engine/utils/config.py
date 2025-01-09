@@ -1,3 +1,4 @@
+# File: transcription_engine/utils/config.py
 """
 Configuration or utility methods shared across modules.
 """

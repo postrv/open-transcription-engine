@@ -1,3 +1,4 @@
+# File: transcription_engine/timeline_visualization/timeline_ui.py
 """
 Timeline Visualization UI module.
 """

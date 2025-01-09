@@ -1,3 +1,4 @@
+# File: transcription_engine/redaction/redactor.py
 """
 Automated and manual redaction module.
 """

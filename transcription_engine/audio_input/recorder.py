@@ -1,3 +1,4 @@
+# File: transcription_engine/audio_input/recorder.py
 """
 Audio Recorder module.
 Handles capturing audio from microphones in real-time.

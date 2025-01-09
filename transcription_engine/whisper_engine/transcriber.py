@@ -1,3 +1,4 @@
+# File: transcription_engine/whisper_engine/transcriber.py
 """
 Handles local Whisper inference (offline).
 """
