@@ -1,6 +1,6 @@
-\"\"\"
+"""
 Speaker Diarization/Identification module.
-\"\"\"
+"""
 
 def assign_speaker_ids(transcripts):
     # TODO: Use basic diarization or handle multi-channel approach

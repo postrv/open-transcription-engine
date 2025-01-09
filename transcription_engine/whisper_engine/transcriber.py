@@ -1,6 +1,6 @@
-\"\"\"
+"""
 Handles local Whisper inference (offline).
-\"\"\"
+"""
 
 def run_whisper(audio_data):
     # TODO: Load or select the Whisper model

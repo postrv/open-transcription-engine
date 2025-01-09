@@ -1,6 +1,6 @@
-\"\"\"
+"""
 Automated and manual redaction module.
-\"\"\"
+"""
 
 def auto_redact(speaker_segments):
     # TODO: Based on a known list of sensitive words/phrases, redact them
