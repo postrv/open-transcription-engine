@@ -10,8 +10,6 @@ import logging
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple, Union
 from dataclasses import dataclass
-from pyannote.audio import Pipeline
-from pyannote.core import Segment, Annotation
 from collections import defaultdict
 
 from ..utils.config import config_manager
@@ -19,6 +17,16 @@ from ..whisper_engine.transcriber import TranscriptionSegment
 
 # Configure logging
 logger = logging.getLogger(__name__)
+
+# Optional pyannote import
+try:
+    from pyannote.audio import Pipeline
+    from pyannote.core import Segment, Annotation
+
+    PYANNOTE_AVAILABLE = True
+except ImportError:
+    logger.warning("pyannote.audio not available. Single-channel diarization will be limited.")
+    PYANNOTE_AVAILABLE = False
 
 
 @dataclass
@@ -45,7 +53,7 @@ class DiarizationManager:
         self.config = config_manager.load_config()
         self.device = self._setup_device()
         self.pipeline = None
-        self.use_pyannote = use_pyannote
+        self.use_pyannote = use_pyannote and PYANNOTE_AVAILABLE
         self.auth_token = auth_token
 
     def _setup_device(self) -> torch.device:
@@ -62,6 +70,10 @@ class DiarizationManager:
 
     def _load_pyannote(self) -> bool:
         """Load the PyAnnote pipeline."""
+        if not PYANNOTE_AVAILABLE:
+            logger.warning("PyAnnote not available. Please install pyannote.audio for advanced diarization.")
+            return False
+
         if self.pipeline is not None:
             return True
 
@@ -130,22 +142,27 @@ class DiarizationManager:
 
     def process_singlechannel(self, audio_data: np.ndarray,
                               sample_rate: int) -> List[SpeakerSegment]:
-        """
-        Process single-channel audio using PyAnnote for speaker diarization.
+        """Process single-channel audio using available diarization method."""
+        # If PyAnnote is available and enabled, use it
+        if self.use_pyannote and self._load_pyannote():
+            return self._process_with_pyannote(audio_data, sample_rate)
 
-        Args:
-            audio_data: Single-channel audio data
-            sample_rate: Audio sample rate
+        # Fallback to basic energy-based segmentation
+        logger.warning("Using basic energy-based segmentation (no speaker identification)")
+        segments = self._detect_speech(audio_data, sample_rate)
+        return [
+            SpeakerSegment(
+                start=start,
+                end=end,
+                speaker_id="speaker_unknown",
+                score=0.5
+            )
+            for start, end in segments
+        ]
 
-        Returns:
-            List of SpeakerSegment objects
-        """
-        if not self.use_pyannote:
-            raise ValueError("PyAnnote diarization is disabled")
-
-        if not self._load_pyannote():
-            raise RuntimeError("Failed to load PyAnnote pipeline")
-
+    def _process_with_pyannote(self, audio_data: np.ndarray,
+                               sample_rate: int) -> List[SpeakerSegment]:
+        """Process audio using PyAnnote pipeline."""
         try:
             # Ensure audio is mono
             if len(audio_data.shape) > 1:

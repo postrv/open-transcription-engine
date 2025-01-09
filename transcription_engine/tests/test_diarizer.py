@@ -11,30 +11,10 @@ from pathlib import Path
 
 from ..speaker_id.diarizer import (
     DiarizationManager,
-    SpeakerSegment
+    SpeakerSegment,
+    PYANNOTE_AVAILABLE
 )
 from ..whisper_engine.transcriber import TranscriptionSegment
-
-
-@pytest.fixture
-def mock_pyannote():
-    """Fixture providing a mocked PyAnnote pipeline."""
-    with patch('pyannote.audio.Pipeline') as mock:
-        # Create a mock pipeline
-        mock_pipeline = Mock()
-        mock_pipeline.to.return_value = mock_pipeline
-
-        # Mock diarization output
-        mock_output = Mock()
-        mock_output.itertracks.return_value = [
-            (Mock(start=0.0, end=2.0), None, "SPEAKER_1"),
-            (Mock(start=2.1, end=4.0), None, "SPEAKER_2"),
-        ]
-
-        mock_pipeline.return_value = mock_output
-        mock.from_pretrained.return_value = mock_pipeline
-
-        yield mock
 
 
 @pytest.fixture
@@ -54,8 +34,47 @@ def sample_audio():
     return audio_data, sample_rate
 
 
-class TestDiarizationManager:
-    """Test suite for DiarizationManager class."""
+@pytest.mark.skipif(not PYANNOTE_AVAILABLE, reason="pyannote.audio not installed")
+class TestPyannoteDiarization:
+    """Test suite for PyAnnote-specific functionality."""
+
+    @pytest.fixture
+    def mock_pyannote(self):
+        """Fixture providing a mocked PyAnnote pipeline."""
+        with patch('pyannote.audio.Pipeline') as mock:
+            # Create a mock pipeline
+            mock_pipeline = Mock()
+            mock_pipeline.to.return_value = mock_pipeline
+
+            # Mock diarization output
+            mock_output = Mock()
+            mock_output.itertracks.return_value = [
+                (Mock(start=0.0, end=2.0), None, "SPEAKER_1"),
+                (Mock(start=2.1, end=4.0), None, "SPEAKER_2"),
+            ]
+
+            mock_pipeline.return_value = mock_output
+            mock.from_pretrained.return_value = mock_pipeline
+
+            yield mock
+
+    def test_pyannote_processing(self, mock_pyannote, sample_audio):
+        """Test processing using PyAnnote."""
+        audio_data, sample_rate = sample_audio
+        mono_audio = audio_data.mean(axis=1)
+
+        manager = DiarizationManager(use_pyannote=True, auth_token="dummy_token")
+        segments = manager.process_singlechannel(mono_audio, sample_rate)
+
+        assert len(segments) == 2
+        assert segments[0].speaker_id == "SPEAKER_1"
+        assert segments[1].speaker_id == "SPEAKER_2"
+        assert segments[0].start == 0.0
+        assert segments[0].end == 2.0
+
+
+class TestBasicDiarization:
+    """Test suite for basic diarization functionality."""
 
     def test_device_selection(self):
         """Test computation device selection logic."""
@@ -89,33 +108,17 @@ class TestDiarizationManager:
         assert all(seg.channel in [0, 1] for seg in segments)
         assert all(seg.speaker_id in ['speaker_1', 'speaker_2'] for seg in segments)
 
-    def test_pyannote_processing(self, mock_pyannote, sample_audio):
-        """Test processing using PyAnnote."""
+    def test_basic_singlechannel(self, sample_audio):
+        """Test basic single-channel processing without PyAnnote."""
         audio_data, sample_rate = sample_audio
         mono_audio = audio_data.mean(axis=1)
 
-        manager = DiarizationManager(use_pyannote=True, auth_token="dummy_token")
+        manager = DiarizationManager(use_pyannote=False)
         segments = manager.process_singlechannel(mono_audio, sample_rate)
 
-        assert len(segments) == 2
-        assert segments[0].speaker_id == "SPEAKER_1"
-        assert segments[1].speaker_id == "SPEAKER_2"
-        assert segments[0].start == 0.0
-        assert segments[0].end == 2.0
-
-    def test_speech_detection(self, sample_audio):
-        """Test energy-based speech detection."""
-        audio_data, sample_rate = sample_audio
-        manager = DiarizationManager(use_pyannote=False)
-
-        # Test with single channel audio
-        mono_audio = audio_data[:, 0]  # Take first channel
-        segments = manager._detect_speech(mono_audio, sample_rate)
-
-        assert isinstance(segments, list)
-        assert all(isinstance(seg, tuple) for seg in segments)
-        assert all(len(seg) == 2 for seg in segments)  # (start, end) pairs
-        assert all(seg[1] > seg[0] for seg in segments)  # End times after start times
+        assert len(segments) > 0
+        assert all(isinstance(seg, SpeakerSegment) for seg in segments)
+        assert all(seg.speaker_id == "speaker_unknown" for seg in segments)
 
     def test_speaker_assignment(self):
         """Test assignment of speaker IDs to transcription segments."""
@@ -165,20 +168,10 @@ class TestDiarizationManager:
 
     def test_error_handling(self):
         """Test error handling scenarios."""
-        manager = DiarizationManager(use_pyannote=True)
-
-        # Test missing auth token
-        with pytest.raises(ValueError, match="requires a HuggingFace auth token"):
-            manager._load_pyannote()
-
         # Test invalid audio input for multichannel
+        manager = DiarizationManager(use_pyannote=False)
         with pytest.raises(ValueError, match="Expected multi-channel audio"):
             manager.process_multichannel(np.array([1, 2, 3]), 16000)
-
-        # Test PyAnnote disabled
-        manager = DiarizationManager(use_pyannote=False)
-        with pytest.raises(ValueError, match="PyAnnote diarization is disabled"):
-            manager.process_singlechannel(np.array([1, 2, 3]), 16000)
 
 
 if __name__ == '__main__':

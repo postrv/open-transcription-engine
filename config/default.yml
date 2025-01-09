@@ -1,0 +1,25 @@
+audio:
+  channels: 1
+  chunk_size: 1024
+  device_index: null
+  format: wav
+  sample_rate: 16000
+max_audio_length: 3600
+output_dir: output
+redaction:
+  fuzzy_threshold: 0.85
+  min_phrase_length: 2
+  redaction_char: '*'
+  sensitive_phrases_file: config/sensitive_phrases.txt
+security:
+  audit_logging: true
+  encrypt_audio: true
+  encrypt_transcripts: true
+  encryption_key_file: null
+temp_dir: temp
+whisper:
+  batch_size: 16
+  compute_type: float16
+  device: auto
+  language: en
+  model_size: base

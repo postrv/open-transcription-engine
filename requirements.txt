@@ -1,5 +1,6 @@
 # requirements.txt
 
+# Core dependencies
 pyyaml>=6.0
 pyaudio>=0.2.14
 soundfile>=0.13.0
@@ -9,8 +10,11 @@ scipy>=1.11.0
 psutil>=5.9.0
 pytorch-lightning>=2.5.0
 
-# The lines below are commented out, because we installed them via conda:
+# The following packages are managed by conda:
 # torch>=2.5.1
 # torchaudio>=2.5.1
 # numpy>=2.2.0
-# pyannote.audio>=3.1.1
+
+# Optional dependencies
+# To enable speaker diarization, install:
+# conda install -c conda-forge pyannote.audio>=3.1.1
