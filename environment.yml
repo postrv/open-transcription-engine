@@ -1,0 +1,23 @@
+# File: environment.yml
+name: whisper
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pip
+  - pytorch
+  - torchaudio
+  - numpy
+  - pyyaml>=6.0
+  - scipy>=1.11.0
+  - psutil>=5.9.0
+  - pytest>=7.4.0
+  - rapidfuzz
+  - jellyfish
+  - portaudio  # Required for PyAudio
+  - pip:
+    - openai-whisper>=20240930
+    - soundfile>=0.13.0
+    - PyAudio>=0.2.14
+    - pytorch-lightning>=2.5.0
