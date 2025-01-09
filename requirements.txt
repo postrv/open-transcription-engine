@@ -9,6 +9,7 @@ openai-whisper>=20240930
 scipy>=1.11.0
 psutil>=5.9.0
 pytorch-lightning>=2.5.0
+psutil>=5.9.0
 
 # The following packages are managed by conda:
 # torch>=2.5.1

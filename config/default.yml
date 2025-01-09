@@ -1,3 +1,4 @@
+# File: config/default.yml
 audio:
   channels: 1
   chunk_size: 1024
@@ -13,8 +14,8 @@ redaction:
   sensitive_phrases_file: config/sensitive_phrases.txt
 security:
   audit_logging: true
-  encrypt_audio: true
-  encrypt_transcripts: true
+  encrypt_audio: false  # Changed from true to false for testing
+  encrypt_transcripts: false  # Changed from true to false for testing
   encryption_key_file: null
 temp_dir: temp
 whisper:

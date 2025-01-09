@@ -168,6 +168,7 @@ class AudioRecorder:
         return audio_data
 
 
+
 class AudioLoader:
     """Handles loading audio from various file formats."""
 
@@ -185,16 +186,21 @@ class AudioLoader:
             Tuple of (audio_data, sample_rate)
         """
         file_path = Path(file_path)
-        if not file_path.exists():
-            raise FileNotFoundError(f"Audio file not found: {file_path}")
-
+        # 1. Check extension first
         if file_path.suffix.lower() not in AudioLoader.SUPPORTED_FORMATS:
             raise ValueError(f"Unsupported audio format: {file_path.suffix}")
 
+        # 2. Then check existence
+        if not file_path.exists():
+            raise FileNotFoundError(f"Audio file not found: {file_path}")
+
         try:
             audio_data, sample_rate = sf.read(file_path)
+            # Ensure float32 type
+            if audio_data.dtype != np.float32:
+                audio_data = audio_data.astype(np.float32)
             logger.info(f"Loaded audio file: {file_path.name} "
-                        f"(SR: {sample_rate}Hz, Channels: {audio_data.shape[1] if len(audio_data.shape) > 1 else 1})")
+                       f"(SR: {sample_rate}Hz, Channels: {audio_data.shape[1] if len(audio_data.shape) > 1 else 1})")
             return audio_data, sample_rate
         except Exception as e:
             logger.error(f"Error loading audio file {file_path}: {e}")
@@ -206,11 +212,9 @@ class AudioLoader:
         """Save audio data to a WAV file."""
         file_path = Path(file_path)
         try:
-            with wave.open(str(file_path), 'wb') as wav_file:
-                wav_file.setnchannels(channels)
-                wav_file.setsampwidth(2)  # 16-bit audio
-                wav_file.setframerate(sample_rate)
-                wav_file.writeframes(audio_data.tobytes())
+            # Ensure the data is float32
+            audio_data = audio_data.astype(np.float32)
+            sf.write(str(file_path), audio_data, sample_rate, 'FLOAT')
             logger.info(f"Saved audio to: {file_path}")
         except Exception as e:
             logger.error(f"Error saving WAV file {file_path}: {e}")
