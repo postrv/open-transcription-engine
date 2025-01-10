@@ -1,0 +1,26 @@
+# File: .pre-commit-config.yaml
+repos:
+-   repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.3.0  # Match the version in environment.yml
+    hooks:
+    -   id: ruff
+        args: [--fix]
+    -   id: ruff-format
+-   repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0  # More stable version
+    hooks:
+    -   id: trailing-whitespace
+    -   id: end-of-file-fixer
+    -   id: check-yaml
+    -   id: check-added-large-files
+    -   id: debug-statements
+- repo: https://github.com/pre-commit/mirrors-mypy
+  rev: v1.8.0
+  hooks:
+    - id: mypy
+      additional_dependencies:
+        - pydantic[mypy]>=2.4.0
+        - types-PyYAML>=6.0
+        - types-setuptools>=68.0.0
+        - types-requests>=2.31.0
+        - types-psutil>=5.9.0

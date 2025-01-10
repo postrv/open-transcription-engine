@@ -1,110 +1,122 @@
 # File: transcription_engine/speaker_id/diarizer.py
-"""
-Speaker Diarization module for the Open Transcription Engine.
-Supports both multi-channel (direct mapping) and single-channel (ML-based) diarization.
+# transcription_engine/speaker_id/diarizer.py
+"""Speaker diarization module for the Open Transcription Engine.
+
+Provides functionality for identifying and separating different speakers
+in audio recordings, supporting both multi-channel and single-channel inputs.
 """
 
-import torch
-import numpy as np
+# Use importlib.util to check for pyannote availability
+import importlib.util
 import logging
-from pathlib import Path
-from typing import List, Dict, Optional, Tuple, Union
 from dataclasses import dataclass
-from collections import defaultdict
+from typing import TypeVar
 
+import numpy as np
+import torch
+from numpy.typing import NDArray
+
+# Move these up before other imports
 from ..utils.config import config_manager
 from ..whisper_engine.transcriber import TranscriptionSegment
 
-# Configure logging
+PYANNOTE_AVAILABLE = importlib.util.find_spec("pyannote") is not None
+
+if PYANNOTE_AVAILABLE:
+    from pyannote.audio import Pipeline
+    # Remove the unused imports
+else:
+    Pipeline = None
+
 logger = logging.getLogger(__name__)
 
-# Optional pyannote import
-try:
-    from pyannote.audio import Pipeline
-    from pyannote.core import Segment, Annotation
-
-    PYANNOTE_AVAILABLE = True
-except ImportError:
-    logger.warning("pyannote.audio not available. Single-channel diarization will be limited.")
-    PYANNOTE_AVAILABLE = False
+T = TypeVar("T", bound="DiarizationManager")
 
 
 @dataclass
 class SpeakerSegment:
     """Container for speaker-labeled audio segments."""
+
     start: float
     end: float
     speaker_id: str
-    channel: Optional[int] = None
+    channel: int | None = None
     score: float = 1.0
 
 
 class DiarizationManager:
     """Manages speaker diarization processes."""
 
-    def __init__(self, use_pyannote: bool = True, auth_token: Optional[str] = None):
-        """
-        Initialize the diarization manager.
+    def __init__(
+        self: "DiarizationManager",
+        use_pyannote: bool = True,
+        auth_token: str | None = None,
+    ) -> None:
+        """Initialize the diarization manager.
 
         Args:
-            use_pyannote: Whether to use PyAnnote for single-channel diarization
-            auth_token: HuggingFace token for PyAnnote (if using PyAnnote)
+            use_pyannote: Whether to use pyannote.audio for diarization
+            auth_token: HuggingFace auth token for pyannote.audio
         """
         self.config = config_manager.load_config()
         self.device = self._setup_device()
-        self.pipeline = None
+        self.pipeline: Pipeline | None = None
         self.use_pyannote = use_pyannote and PYANNOTE_AVAILABLE
         self.auth_token = auth_token
 
-    def _setup_device(self) -> torch.device:
+    def _setup_device(self: "DiarizationManager") -> torch.device:
         """Configure the computation device based on availability."""
         if torch.backends.mps.is_available():
             logger.info("Using MPS backend for diarization")
-            return torch.device('mps')
+            return torch.device("mps")
         elif torch.cuda.is_available():
             logger.info("Using CUDA backend for diarization")
-            return torch.device('cuda')
+            return torch.device("cuda")
         else:
             logger.info("Using CPU backend for diarization")
-            return torch.device('cpu')
+            return torch.device("cpu")
 
-    def _load_pyannote(self) -> bool:
+    def _load_pyannote(self: "DiarizationManager") -> bool:
         """Load the PyAnnote pipeline."""
         if not PYANNOTE_AVAILABLE:
-            logger.warning("PyAnnote not available. Please install pyannote.audio for advanced diarization.")
+            logger.warning("PyAnnote not available.")
             return False
 
         if self.pipeline is not None:
+            # Already loaded
             return True
 
         try:
             if not self.auth_token:
-                raise ValueError(
+                msg = (
                     "PyAnnote requires a HuggingFace auth token. "
                     "Please set auth_token in the configuration."
                 )
+                raise ValueError(msg)
 
-            # Initialize pipeline with authentication
-            self.pipeline = Pipeline.from_pretrained(
+            pipeline_obj = Pipeline.from_pretrained(
                 "pyannote/speaker-diarization",
-                use_auth_token=self.auth_token
+                use_auth_token=self.auth_token,
             )
 
-            # Move to appropriate device
-            self.pipeline = self.pipeline.to(self.device)
+            pipeline_obj = pipeline_obj.to(self.device)
+            self.pipeline = pipeline_obj
 
             logger.info("PyAnnote pipeline loaded successfully")
             return True
 
-        except Exception as e:
-            logger.error(f"Failed to load PyAnnote pipeline: {e}")
+        except (ImportError, ValueError, RuntimeError) as e:
+            # Catch narrower exceptions
+            logger.error("Failed to load PyAnnote pipeline: %s", e)
             self.pipeline = None
             return False
 
-    def process_multichannel(self, audio_data: np.ndarray,
-                             sample_rate: int) -> List[SpeakerSegment]:
-        """
-        Process multi-channel audio where each channel represents a different speaker.
+    def process_multichannel(
+        self: "DiarizationManager",
+        audio_data: np.ndarray,
+        sample_rate: int,
+    ) -> list[SpeakerSegment]:
+        """Process multi-channel audio where each channel is a different speaker.
 
         Args:
             audio_data: Multi-channel audio data
@@ -112,12 +124,16 @@ class DiarizationManager:
 
         Returns:
             List of SpeakerSegment objects
+
+        Raises:
+            ValueError: If audio data is not multi-channel
         """
         if len(audio_data.shape) != 2:
-            raise ValueError("Expected multi-channel audio data")
+            msg = "Expected multi-channel audio data"
+            raise ValueError(msg)
 
         num_channels = audio_data.shape[1]
-        segments: List[SpeakerSegment] = []
+        segments: list[SpeakerSegment] = []
 
         # Process each channel to detect speech segments
         for channel in range(num_channels):
@@ -128,105 +144,118 @@ class DiarizationManager:
 
             # Create speaker segments for this channel
             for start, end in speech_segments:
-                segments.append(SpeakerSegment(
-                    start=start,
-                    end=end,
-                    speaker_id=f"speaker_{channel + 1}",
-                    channel=channel,
-                    score=1.0  # High confidence for direct channel mapping
-                ))
+                segments.append(
+                    SpeakerSegment(
+                        start=start,
+                        end=end,
+                        speaker_id=f"speaker_{channel + 1}",
+                        channel=channel,
+                        score=1.0,  # High confidence for direct channel mapping
+                    ),
+                )
 
         # Sort segments by start time
         segments.sort(key=lambda x: x.start)
         return segments
 
-    def process_singlechannel(self, audio_data: np.ndarray,
-                              sample_rate: int) -> List[SpeakerSegment]:
-        """Process single-channel audio using available diarization method."""
-        # If PyAnnote is available and enabled, use it
-        if self.use_pyannote and self._load_pyannote():
-            return self._process_with_pyannote(audio_data, sample_rate)
-
-        # Fallback to basic energy-based segmentation
-        logger.warning("Using basic energy-based segmentation (no speaker identification)")
-        segments = self._detect_speech(audio_data, sample_rate)
-        return [
-            SpeakerSegment(
-                start=start,
-                end=end,
-                speaker_id="speaker_unknown",
-                score=0.5
-            )
-            for start, end in segments
-        ]
-
-    def _process_with_pyannote(self, audio_data: np.ndarray,
-                               sample_rate: int) -> List[SpeakerSegment]:
-        """Process audio using PyAnnote pipeline."""
-        try:
-            # Ensure audio is mono
-            if len(audio_data.shape) > 1:
-                audio_data = audio_data.mean(axis=1)
-
-            # Run diarization
-            diarization = self.pipeline({
-                "waveform": torch.tensor(audio_data).unsqueeze(0),
-                "sample_rate": sample_rate
-            })
-
-            # Convert PyAnnote output to our format
-            segments: List[SpeakerSegment] = []
-            for turn, _, speaker in diarization.itertracks(yield_label=True):
-                segments.append(SpeakerSegment(
-                    start=turn.start,
-                    end=turn.end,
-                    speaker_id=speaker,
-                    score=0.95  # PyAnnote doesn't provide confidence scores
-                ))
-
-            # Sort segments by start time
-            segments.sort(key=lambda x: x.start)
-            return segments
-
-        except Exception as e:
-            logger.error(f"Error during PyAnnote diarization: {e}")
-            raise
-
-    def _detect_speech(self, audio_data: np.ndarray,
-                       sample_rate: int) -> List[Tuple[float, float]]:
-        """
-        Detect speech segments in audio using energy-based VAD.
+    def process_singlechannel(
+        self: "DiarizationManager",
+        audio_data: np.ndarray,
+        sample_rate: int,
+    ) -> list[SpeakerSegment]:
+        """Process single-channel audio using available diarization method.
 
         Args:
             audio_data: Single channel audio data
             sample_rate: Audio sample rate
 
         Returns:
-            List of (start, end) tuples in seconds
+            List of SpeakerSegment objects
         """
-        # Parameters for voice activity detection
-        frame_length = int(0.025 * sample_rate)  # 25ms frames
-        frame_step = int(0.010 * sample_rate)  # 10ms step
-        energy_threshold = 0.1  # Adjusted based on normalized audio
-        min_speech_duration = 0.3  # Minimum speech segment duration in seconds
+        if self.use_pyannote and self._load_pyannote():
+            return self._process_with_pyannote(audio_data, sample_rate)
 
-        # Normalize audio
+        # Fallback to basic energy-based segmentation
+        logger.warning(
+            "Using basic energy-based segmentation (no speaker identification)",
+        )
+        segments = self._detect_speech(audio_data, sample_rate)
+        return [
+            SpeakerSegment(
+                start=start,
+                end=end,
+                speaker_id="speaker_unknown",
+                score=0.5,
+            )
+            for start, end in segments
+        ]
+
+    def _process_with_pyannote(
+        self: "DiarizationManager",
+        audio_data: np.ndarray,
+        sample_rate: int,
+    ) -> list[SpeakerSegment]:
+        """Process audio using PyAnnote pipeline."""
+        try:
+            if self.pipeline is None:
+                error_message = "PyAnnote pipeline must be loaded first"
+                raise AssertionError(error_message)
+
+            if len(audio_data.shape) > 1:
+                audio_data = audio_data.mean(axis=1)
+
+            diarization = self.pipeline(
+                {
+                    "waveform": torch.tensor(audio_data).unsqueeze(0),
+                    "sample_rate": sample_rate,
+                },
+            )
+
+            # Convert PyAnnote output to our format
+            segments: list[SpeakerSegment] = []
+            for turn, _, speaker in diarization.itertracks(yield_label=True):
+                segments.append(
+                    SpeakerSegment(
+                        start=turn.start,
+                        end=turn.end,
+                        speaker_id=speaker,
+                        score=0.95,  # PyAnnote doesn't provide confidence scores
+                    ),
+                )
+
+            # Sort segments by start time
+            segments.sort(key=lambda x: x.start)
+            return segments
+
+        except Exception as e:  # Possibly narrower: (RuntimeError, ValueError, etc.)
+            logger.error("Error during PyAnnote diarization: %s", e)
+
+            raise
+
+    def _detect_speech(
+        self: "DiarizationManager",
+        audio_data: np.ndarray,
+        sample_rate: int,
+    ) -> list[tuple[float, float]]:
+        """Energy-based VAD."""
+        frame_length = int(0.025 * sample_rate)
+        frame_step = int(0.010 * sample_rate)
+        energy_threshold = 0.1
+        min_speech_duration = 0.3
+
         audio_data = audio_data / np.max(np.abs(audio_data))
 
-        # Calculate frame energies
-        frames = []
+        frame_energies: list[float] = []
         for i in range(0, len(audio_data) - frame_length, frame_step):
-            frame = audio_data[i:i + frame_length]
-            energy = np.sum(frame ** 2) / frame_length
-            frames.append(energy)
+            frame = audio_data[i : i + frame_length]
+            energy = float(np.sum(frame**2) / frame_length)
+            frame_energies.append(energy)
 
-        frames = np.array(frames)
+        frames_array: NDArray[np.float64] = np.array(frame_energies, dtype=np.float64)
+        is_speech = frames_array > energy_threshold
 
-        # Find speech segments
-        is_speech = frames > energy_threshold
-
-        # Convert frame indices to time segments
-        segments = []
+        # Convert bool array to segments
+        segments: list[tuple[float, float]] = []
         start_frame = None
 
         for i in range(len(is_speech)):
@@ -250,27 +279,24 @@ class DiarizationManager:
 
         return segments
 
-    def assign_speaker_ids(self, transcription_segments: List[TranscriptionSegment],
-                           diarization_segments: List[SpeakerSegment]) -> List[TranscriptionSegment]:
-        """
-        Assign speaker IDs to transcription segments based on diarization results.
+    def assign_speaker_ids(
+        self: "DiarizationManager",
+        transcription_segments: list[TranscriptionSegment],
+        diarization_segments: list[SpeakerSegment],
+    ) -> list[TranscriptionSegment]:
+        """Assign speaker IDs to transcription segments.
 
-        Args:
-            transcription_segments: List of transcription segments
-            diarization_segments: List of speaker segments
-
-        Returns:
-            Updated list of transcription segments with speaker IDs
+        Based on diarization segments.
         """
-        # Create a map of time ranges to speaker IDs
-        speaker_map = {}
+        from collections import defaultdict
+
+        # specify dict types
+        speaker_map: dict[tuple[float, float], str] = {}
         for seg in diarization_segments:
             speaker_map[(seg.start, seg.end)] = seg.speaker_id
 
-        # Assign speakers to transcription segments
         for trans_seg in transcription_segments:
-            # Find overlapping diarization segments
-            matching_speakers = defaultdict(float)
+            matching_speakers: defaultdict[str, float] = defaultdict(float)
 
             for (start, end), speaker_id in speaker_map.items():
                 overlap_start = max(trans_seg.start, start)
@@ -280,16 +306,15 @@ class DiarizationManager:
                     overlap_duration = overlap_end - overlap_start
                     matching_speakers[speaker_id] += overlap_duration
 
-            # Assign the speaker with maximum overlap
             if matching_speakers:
                 trans_seg.speaker_id = max(
                     matching_speakers.items(),
-                    key=lambda x: x[1]
+                    key=lambda x: x[1],
                 )[0]
 
         return transcription_segments
 
-    def __del__(self):
+    def __del__(self: "DiarizationManager") -> None:
         """Cleanup when the object is deleted."""
         if self.pipeline is not None:
             del self.pipeline

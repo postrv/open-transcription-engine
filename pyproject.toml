@@ -1,0 +1,49 @@
+[tool.ruff]
+line-length = 88
+indent-width = 4
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "N", "D", "UP", "ANN", "S", "BLE", "A", "T10", "EM", "ISC"]
+ignore = [
+    "D203",  # one-blank-line-before-class
+    "D212",  # multi-line-summary-first-line
+    "COM812",  # missing-trailing-comma
+    "ISC001"  # single-line-implicit-string-concatenation
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+
+[tool.ruff.lint.isort]
+known-first-party = ["transcription_engine"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.pycodestyle]
+ignore-overlong-task-comments = true
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+check_untyped_defs = true
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = [
+    "pyaudio.*",
+    "soundfile.*",
+    "whisper.*",
+    "torch.*",
+    "pytest.*",
+    "uvicorn.*",
+    "fastapi.*",
+    "pydantic.*"
+]
+ignore_missing_imports = true

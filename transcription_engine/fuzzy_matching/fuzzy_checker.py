@@ -1,25 +1,31 @@
 # File: transcription_engine/fuzzy_matching/fuzzy_checker.py
-"""
-Fuzzy/Phoneme Matching module for detecting approximate matches of sensitive terms.
+"""Fuzzy/Phoneme Matching module for detecting approximate matches of sensitive terms.
+
 Uses rapidfuzz for efficient fuzzy string matching and phonetics for name matching.
 """
 
+import json
 import logging
-from typing import List, Dict, Set, Tuple
 from dataclasses import dataclass
 from pathlib import Path
-import json
-from rapidfuzz import fuzz, process
+from typing import TypeVar
+
 import jellyfish  # For phonetic matching
-from ..utils.config import config_manager
+from rapidfuzz import fuzz, process
+
+from ..utils.config import RedactionConfig, config_manager
 
 # Configure logging
 logger = logging.getLogger(__name__)
+
+# Type variable for the FuzzyChecker class
+T = TypeVar("T", bound="FuzzyChecker")
 
 
 @dataclass
 class FuzzyMatch:
     """Container for detected fuzzy matches."""
+
     original_text: str
     matched_term: str
     matched_phrase: str
@@ -30,38 +36,53 @@ class FuzzyMatch:
 
 
 class FuzzyChecker:
-    """
-    Handles fuzzy matching of sensitive terms with configurable thresholds.
-    Supports both fuzzy string matching and phonetic matching for names.
-    """
+    """Handles fuzzy matching of sensitive terms with configurable thresholds."""
 
-    def __init__(self, config=None):
+    def __init__(self: T, config: RedactionConfig | None = None) -> None:
         """Initialize the fuzzy checker with configuration."""
         self.config = config or config_manager.load_config().redaction
         self.sensitive_terms = self._load_sensitive_terms()
-        self.name_terms = {term for term in self.sensitive_terms
-                           if len(term.split()) <= 2}  # Likely names
+        # Fix line length by breaking into multiple lines
+        self.name_terms = {
+            term for term in self.sensitive_terms if len(term.split()) <= 2
+        }  # Likely names
         self.fuzzy_threshold = self.config.fuzzy_threshold
         self.min_length = self.config.min_phrase_length
 
-    def _load_sensitive_terms(self) -> Set[str]:
-        """Load sensitive terms from configured file."""
+    def _load_sensitive_terms(self: T) -> set[str]:
+        """Load sensitive terms from configured file.
+
+        Returns:
+            Set of sensitive terms loaded from file.
+        """
         try:
             path = Path(self.config.sensitive_phrases_file)
             if not path.exists():
-                logger.warning(f"Sensitive phrases file not found: {path}")
+                logger.warning("Sensitive phrases file not found: %s", path)
                 return set()
 
-            with open(path, 'r') as f:
+            with open(path) as f:
                 terms = {line.strip() for line in f if line.strip()}
-            logger.info(f"Loaded {len(terms)} sensitive terms")
+            logger.info("Loaded %d sensitive terms", len(terms))
             return terms
-        except Exception as e:
-            logger.error(f"Error loading sensitive terms: {e}")
+        except (OSError, json.JSONDecodeError) as e:
+            logger.error("Error loading sensitive terms: %s", e)
             return set()
 
-    def _get_phonetic_matches(self, text: str, phrase: str) -> List[FuzzyMatch]:
-        """Separate method for phonetic matching of names."""
+    def _get_phonetic_matches(
+        self: T,
+        text: str,
+        phrase: str,
+    ) -> list[FuzzyMatch]:
+        """Find phonetic matches of names and similar sounding terms.
+
+        Args:
+            text: Original text containing the phrase
+            phrase: Specific phrase to check for matches
+
+        Returns:
+            List of phonetic matches found
+        """
         matches = []
         phrase_words = phrase.split()
 
@@ -70,22 +91,84 @@ class FuzzyChecker:
                 term_words = term.split()
                 if len(phrase_words) == len(term_words):
                     # Compare each word using Soundex
-                    if all(jellyfish.soundex(pw) == jellyfish.soundex(tw)
-                           for pw, tw in zip(phrase_words, term_words)):
-                        matches.append(FuzzyMatch(
-                            original_text=text,
-                            matched_term=term,
-                            matched_phrase=phrase,
-                            confidence=0.85,
-                            start_pos=text.find(phrase),
-                            end_pos=text.find(phrase) + len(phrase),
-                            match_type='phonetic'
-                        ))
+                    if all(
+                        jellyfish.soundex(pw) == jellyfish.soundex(tw)
+                        for pw, tw in zip(phrase_words, term_words, strict=False)
+                    ):
+                        matches.append(
+                            FuzzyMatch(
+                                original_text=text,
+                                matched_term=term,
+                                matched_phrase=phrase,
+                                confidence=0.85,
+                                start_pos=text.find(phrase),
+                                end_pos=text.find(phrase) + len(phrase),
+                                match_type="phonetic",
+                            ),
+                        )
         return matches
 
-    def find_similar_terms(self, transcript_segments: List[Dict]) -> List[FuzzyMatch]:
+    def _process_segment(
+        self: T,
+        text: str,
+        words: list[str],
+        start_idx: int,
+        window_size: int,
+    ) -> list[FuzzyMatch]:
+        """Process a single segment of text for potential matches.
+
+        Args:
+            text: Full text being analyzed
+            words: List of words in the text
+            start_idx: Starting index for the current window
+            window_size: Size of the current phrase window
+
+        Returns:
+            List of matches found in this segment
         """
-        Find potential matches for sensitive terms in transcript segments.
+        matches: list[FuzzyMatch] = []
+        end_idx = min(start_idx + window_size, len(words))
+        phrase = " ".join(words[start_idx:end_idx])
+
+        # Skip very short phrases
+        if len(phrase) < self.min_length:
+            return matches
+
+        # First try phonetic matching for names
+        phonetic_matches = self._get_phonetic_matches(text, phrase)
+        if phonetic_matches:
+            matches.extend(phonetic_matches)
+            return matches
+
+        # Then try fuzzy matching
+        fuzzy_matches = process.extract(
+            phrase,
+            self.sensitive_terms,
+            scorer=fuzz.token_sort_ratio,
+            score_cutoff=self.fuzzy_threshold * 80,
+            limit=3,
+        )
+
+        for term, score, _ in fuzzy_matches:
+            matches.append(
+                FuzzyMatch(
+                    original_text=text,
+                    matched_term=term,
+                    matched_phrase=phrase,
+                    confidence=score / 100.0,
+                    start_pos=text.find(phrase),
+                    end_pos=text.find(phrase) + len(phrase),
+                    match_type="fuzzy",
+                ),
+            )
+
+        return matches
+
+    def find_similar_terms(
+        self: T,
+        transcript_segments: list[dict[str, str]],
+    ) -> list[FuzzyMatch]:
+        """Find potential matches for sensitive terms in transcript segments.
 
         Args:
             transcript_segments: List of transcript segments to check
@@ -93,73 +176,55 @@ class FuzzyChecker:
         Returns:
             List of FuzzyMatch objects for review
         """
-        matches = []
+        if not transcript_segments:
+            return []
 
+        all_matches = []
         for segment in transcript_segments:
-            text = segment['text']
+            text = segment.get("text", "")
             if not text:
                 continue
 
             # Check each word/phrase in the text
             words = text.split()
-            for i in range(len(words)):
-                for j in range(i + self.min_length, min(i + 5, len(words) + 1)):
-                    phrase = ' '.join(words[i:j])
-
-                    # Skip very short phrases
-                    if len(phrase) < self.min_length:
-                        continue
-
-                    # First try phonetic matching for names
-                    phonetic_matches = self._get_phonetic_matches(text, phrase)
-                    if phonetic_matches:
-                        matches.extend(phonetic_matches)
-                        continue  # Skip fuzzy matching if we found phonetic matches
-
-                    # Then try fuzzy matching
-                    fuzzy_matches = process.extract(
-                        phrase,
-                        self.sensitive_terms,
-                        scorer=fuzz.token_sort_ratio,
-                        score_cutoff=self.fuzzy_threshold * 80,
-                        limit=3
-                    )
-
-                    for term, score, _ in fuzzy_matches:
-                        matches.append(FuzzyMatch(
-                            original_text=text,
-                            matched_term=term,
-                            matched_phrase=phrase,
-                            confidence=score / 100.0,
-                            start_pos=text.find(phrase),
-                            end_pos=text.find(phrase) + len(phrase),
-                            match_type='fuzzy'
-                        ))
+            for start_idx in range(len(words)):
+                for window_size in range(2, min(6, len(words) - start_idx + 1)):
+                    matches = self._process_segment(text, words, start_idx, window_size)
+                    all_matches.extend(matches)
 
         # Remove duplicates while preserving order
         seen = set()
         unique_matches = []
-        for match in matches:
+        for match in all_matches:
             key = (match.matched_term, match.start_pos, match.end_pos)
             if key not in seen:
                 seen.add(key)
                 unique_matches.append(match)
 
-        logger.info(f"Found {len(unique_matches)} potential sensitive term matches")
+        logger.info("Found %d potential sensitive term matches", len(unique_matches))
         return unique_matches
 
-    def save_matches(self, matches: List[FuzzyMatch], output_path: Path):
-        """Save matches to a JSON file for review."""
+    def save_matches(self: T, matches: list[FuzzyMatch], output_path: Path) -> None:
+        """Save matches to a JSON file for review.
+
+        Args:
+            matches: List of FuzzyMatch objects to save
+            output_path: Path where to save the JSON file
+
+        Raises:
+            OSError: If there are filesystem-related errors
+            json.JSONDecodeError: If there are JSON serialization errors
+        """
         try:
             matches_dict = [
                 {
-                    'original_text': m.original_text,
-                    'matched_term': m.matched_term,
-                    'matched_phrase': m.matched_phrase,
-                    'confidence': float(m.confidence),
-                    'start_pos': m.start_pos,
-                    'end_pos': m.end_pos,
-                    'match_type': m.match_type
+                    "original_text": m.original_text,
+                    "matched_term": m.matched_term,
+                    "matched_phrase": m.matched_phrase,
+                    "confidence": float(m.confidence),
+                    "start_pos": m.start_pos,
+                    "end_pos": m.end_pos,
+                    "match_type": m.match_type,
                 }
                 for m in matches
             ]
@@ -167,16 +232,16 @@ class FuzzyChecker:
             # Create parent directories if they don't exist
             output_path.parent.mkdir(parents=True, exist_ok=True)
 
-            # Convert to string first
+            # Convert to string first for atomic write
             json_str = json.dumps(matches_dict, indent=2)
 
             # Write content
-            with open(output_path, 'w') as f:
+            with open(output_path, "w") as f:
                 f.write(json_str)
                 f.flush()  # Ensure content is written
 
-            logger.info(f"Saved {len(matches)} matches to {output_path}")
+            logger.info("Saved %d matches to %s", len(matches), output_path)
 
-        except Exception as e:
-            logger.error(f"Error saving matches: {e}")
+        except (OSError, json.JSONDecodeError) as e:
+            logger.error("Error saving matches: %s", e)
             raise

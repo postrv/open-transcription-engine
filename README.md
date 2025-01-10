@@ -1,6 +1,6 @@
 # Open Transcription Engine
 
-A local/offline transcription engine focused on generating accurate and privacy-respecting court transcripts.  
+A local/offline transcription engine focused on generating accurate and privacy-respecting court transcripts.
 This project integrates:
 - **Local Whisper Inference (offline)** for transcription
 - **Speaker Diarization** for identifying individual speakers
@@ -8,20 +8,17 @@ This project integrates:
 - **Fuzzy/Phoneme Matching** to catch near-miss sensitive words
 - **Timeline Visualization** to review/edit transcripts efficiently
 
-<br/>
-
 ## Table of Contents
 
-1. [Background & Goals](#background--goals)  
-2. [Architecture Overview](#architecture-overview)  
-3. [Project Plan Checklist](#project-plan-checklist)  
-4. [Installation](#installation)  
-5. [Usage](#usage)  
-6. [Next Steps: Code & Features](#next-steps-code--features)  
-7. [Contributing](#contributing)  
-8. [License](#license)
-
-<br/>
+1. [Background & Goals](#background--goals)
+2. [Architecture Overview](#architecture-overview)
+3. [Project Status](#project-status)
+4. [Installation](#installation)
+5. [Development Setup](#development-setup)
+6. [Usage](#usage)
+7. [Next Steps](#next-steps)
+8. [Contributing](#contributing)
+9. [License](#license)
 
 ## Background & Goals
 
@@ -32,134 +29,141 @@ Court transcripts in the UK can be very expensive and time-consuming to produce,
 - **Operate fully offline**, ensuring sensitive audio and text never leave the local machine.
 - **Be extensible** to a variety of environments (courtrooms, depositions, legal offices, and more).
 
-<br/>
-
 ## Architecture Overview
 
-TODO: Add a high-level diagram of the system architecture, showing the flow of audio input to final transcript output.
+The system processes audio in several stages:
 
-<br/>
+1. **Audio Input**: Multi-channel audio capture with real-time streaming and file input support
+2. **Whisper Engine**: Offline transcription using Whisper models with MPS/CUDA/CPU support
+3. **Speaker Identification**:
+   - Channel-based diarization for multi-channel audio
+   - ML-based diarization (optional pyannote.audio) for single-channel
+4. **Redaction Pipeline**:
+   - Automated redaction using configurable sensitive phrase lists
+   - Fuzzy matching to catch approximate matches
+   - Manual redaction through web UI
+5. **Timeline UI**: FastAPI + React-based interface for transcript review and editing
 
+## Project Status
 
-1. **Audio Input**: Capture multi-channel audio in real-time (or load from existing files).  
-2. **Whisper Engine**: Run offline transcription using Whisper models (tiny → large).  
-3. **Speaker Identification**: Label speaker segments automatically or per audio channel.  
-4. **Redaction**:  
-   - Automated approach: Use a defined dictionary of sensitive phrases.  
-   - Manual approach: Provide a GUI or step for users to mark text for redaction.  
-5. **Fuzzy Matching**: Catch approximate matches (e.g., "Jon" ~ "John") and flag for review.  
-6. **Timeline Visualization**: Allow quick inspection and editing of transcripts via a timeline UI.  
+✅ Completed:
+- Base architecture and module structure
+- Audio recording and processing pipeline
+- Whisper integration with GPU support
+- Basic speaker diarization
+- Fuzzy matching system
+- Redaction framework
+- Timeline UI components
+- Comprehensive test suite
 
-<br/>
-
-## Project Plan Checklist
-
-1. **Audio Recorder (Real-Time or File Input)**
-   - [ ] Implement multi-channel microphone recording or load from an audio file.  
-   - [ ] Ensure robust handling of audio streaming in a courtroom setting.  
-
-2. **Local Whisper Integration**
-   - [ ] Add optional GPU support (if available).  
-   - [ ] Allow model size selection (tiny, base, small, medium, large).  
-   - [ ] Chunk or batch audio input for long recordings.  
-
-3. **Speaker Diarization**
-   - [ ] Basic approach: numeric channel assignment if multi-channel audio.  
-   - [ ] Advanced approach: incorporate a diarization library (e.g., pyannote) for single-track audio.  
-
-4. **Redaction**
-   - [ ] Implement a dictionary-based auto-redaction pipeline.  
-   - [ ] Provide a manual redaction workflow in the UI (highlight text, mark it).  
-   - [ ] Ensure a “finalization” step that fully censors chosen text.  
-
-5. **Fuzzy/Phoneme Matching**
-   - [ ] Integrate a fuzzy library (rapidfuzz, fuzzywuzzy) to detect near-misses.  
-   - [ ] Provide a short list of known sensitive references (e.g., partial names, addresses).  
-   - [ ] Generate a list of flagged items for manual review.  
-
-6. **Timeline Visualization**
-   - [ ] Create a simple web or desktop-based UI to display speaker segments over time.  
-   - [ ] Display redaction highlights and flagged terms for user confirmation.  
-
-7. **Output & Security**
-   - [ ] Export transcripts (plain text, PDF, or Word).  
-   - [ ] Consider encryption or secure storage of raw audio and partial transcripts.  
-   - [ ] Add logs or version control to track changes (audit trail).  
-
-8. **Testing & CI/CD**
-   - [ ] Write unit tests for each module.  
-   - [ ] Set up GitHub Actions or similar CI to run tests automatically.  
-
-9. **Deployment Considerations**
-   - [ ] Provide instructions for local installation (Python, dependencies, GPU drivers).  
-   - [ ] Offer Docker container or similar packaging for easier on-premises usage.  
-   - [ ] Document recommended hardware specs for real-time usage.  
-
-<br/>
+🚧 In Progress:
+- Timeline UI server implementation
+- React component integration
+- Manual redaction workflow
+- Documentation improvements
 
 ## Installation
 
-1. **Clone the repository**:
+1. **Prerequisites**:
+   - Python 3.10+
+   - Git
+   - [Conda](https://docs.conda.io/en/latest/miniconda.html) or [Miniforge](https://github.com/conda-forge/miniforge)
+
+2. **Clone the repository**:
    ```bash
    git clone https://github.com/YourUsername/open-transcription-engine.git
    cd open-transcription-engine
-    ```
-2. **Activate a virtual environment**:
-   ```bash
-   python3 -m venv venv
-   source venv/bin/activate
-    ```
-3. **Install dependencies**:
-    ```bash
-    pip install -r requirements.txt
-     ```
-4. **Run the main script**:
-    ```bash
-    python main.py
-     ```
+   ```
 
-<br/>
+3. **Create and activate the conda environment**:
+   ```bash
+   conda env create -f environment.yml
+   conda activate whisper
+   ```
+
+4. **Install development tools**:
+   ```bash
+   pre-commit install
+   ```
+
+## Development Setup
+
+This project uses several development tools to ensure code quality:
+
+- **Ruff**: For linting and formatting (replaces Black/isort/flake8)
+- **MyPy**: For static type checking
+- **Pre-commit**: For automated checks before commits
+- **Pytest**: For testing
+- **Coverage**: For test coverage reporting
+
+To run code quality checks:
+```bash
+# Run Ruff formatting and linting
+ruff check .
+ruff format .
+
+# Run type checking
+mypy .
+
+# Run tests with coverage
+pytest --cov=transcription_engine
+```
 
 ## Usage
 
-    Run the main script:
+1. **Configure the system**:
+   Edit `config/default.yml` to set:
+   - Whisper model size
+   - Audio input preferences
+   - Sensitive phrase lists
+   - GPU/CPU preferences
 
-```bash
-python main.py
-```
+2. **Run the application**:
+   ```bash
+   python main.py
+   ```
 
+3. **Access the Timeline UI**:
+   Open `http://localhost:8000` in your browser to:
+   - Review transcripts
+   - Apply manual redactions
+   - Export final versions
 
-Check logs: 
-- By default, logs or print statements will be shown in the console.
+## Next Steps
 
-Configuration:
-- Update `transcription_engine/utils/config.py` (or a future `config.yaml`) to customize model size, sensitive word lists, etc.
+Priority development areas:
 
-<br/>
+1. **UI/Timeline**:
+   - Complete FastAPI server implementation
+   - Add waveform visualization
+   - Implement real-time updates
 
-## Next Steps: Code & Features
+2. **Security**:
+   - Add audio encryption
+   - Implement secure storage
+   - Add audit logging
 
-- Recorder Module: Implement real-time multi-channel audio capture.
-- Whisper Integration: Add an actual Whisper import, load a model, and handle transcription.
-- Diarization: If using multichannel audio, each channel might map to a distinct speaker. For single-channel, evaluate pyannote.audio.
-- UI/Timeline: Build a minimal local web server (e.g., with Flask or FastAPI) to visualize transcripts with a waveform or timeline.
-- Security: Investigate ways to encrypt transcripts and manage user access in a real court environment.
+3. **Deployment**:
+   - Create Docker container
+   - Add deployment guides
+   - Document hardware requirements
 
-<br/>
+4. **Documentation**:
+   - Add API documentation
+   - Create user guides
+   - Add architecture diagrams
 
 ## Contributing
 
-Contributions are welcome! Please open an issue or submit a pull request with any improvements, bug fixes, or new ideas.
+Contributions are welcome! Please:
 
 1. Fork the repository
 2. Create a feature branch
-3. Commit your changes
-4. Open a Pull Request describing your changes
-
-<br/>
+3. Install development tools: `pre-commit install`
+4. Make your changes
+5. Ensure all tests pass: `pytest`
+6. Open a Pull Request
 
 ## License
 
 MIT License — Feel free to use and adapt this project for non-commercial or commercial purposes, but please give attribution back to this repository.
-
-<br/>
