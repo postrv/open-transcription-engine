@@ -56,3 +56,4 @@ dependencies:
     - PyAudio>=0.2.14
     - pytorch-lightning>=2.5.0
     - pyannote.audio>=3.1
+    - pytest-assume>=2.4.3  # For multiple assertions per test
