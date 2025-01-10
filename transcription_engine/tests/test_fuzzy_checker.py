@@ -1,31 +1,38 @@
 # File: transcription_engine/tests/test_fuzzy_checker.py
-"""
-Unit tests for the fuzzy matching functionality.
-"""
+"""Tests for the fuzzy matching functionality."""
+
 import json
+from pathlib import Path
+from unittest.mock import mock_open, patch
 
 import pytest
-from pathlib import Path
-import tempfile
-from unittest.mock import patch, mock_open
+
 from ..fuzzy_matching.fuzzy_checker import FuzzyChecker, FuzzyMatch
 from ..utils.config import RedactionConfig
 
 
-@pytest.fixture
-def mock_config():
-    """Fixture providing test configuration."""
+@pytest.fixture(scope="function")  # type: ignore[misc]
+def mock_config() -> RedactionConfig:
+    """Provide test configuration.
+
+    Returns:
+        RedactionConfig: Test configuration instance
+    """
     return RedactionConfig(
-        sensitive_phrases_file='test_phrases.txt',
-        redaction_char='*',
+        sensitive_phrases_file=Path("test_phrases.txt"),
+        redaction_char="*",
         min_phrase_length=2,
-        fuzzy_threshold=0.85
+        fuzzy_threshold=0.85,
     )
 
 
-@pytest.fixture
-def sample_sensitive_terms():
-    """Fixture providing sample sensitive terms."""
+@pytest.fixture(scope="function")  # type: ignore[misc]
+def sample_sensitive_terms() -> str:
+    """Provide sample sensitive terms.
+
+    Returns:
+        str: Sample sensitive terms for testing
+    """
     return """John Smith
 Robert Jones
 123 Main Street
@@ -36,125 +43,185 @@ London SW1
 class TestFuzzyChecker:
     """Test suite for fuzzy matching functionality."""
 
-    def test_initialization(self, mock_config, sample_sensitive_terms):
-        """Test FuzzyChecker initialization."""
-        with patch('pathlib.Path.exists') as mock_exists, \
-                patch('builtins.open', mock_open(read_data=sample_sensitive_terms)):
+    def test_initialization(
+        self: "TestFuzzyChecker",
+        mock_config: RedactionConfig,
+        sample_sensitive_terms: str,
+    ) -> None:
+        """Test FuzzyChecker initialization.
+
+        Args:
+            mock_config: Test configuration fixture
+            sample_sensitive_terms: Sample terms fixture
+        """
+        with (
+            patch("pathlib.Path.exists") as mock_exists,
+            patch("builtins.open", mock_open(read_data=sample_sensitive_terms)),
+        ):
             mock_exists.return_value = True
             checker = FuzzyChecker(mock_config)
-            assert checker.fuzzy_threshold == 0.85
-            assert checker.min_length == 2
-            assert len(checker.sensitive_terms) == 5
-            assert 'John Smith' in checker.name_terms
 
-    def test_fuzzy_matching(self, mock_config, sample_sensitive_terms):
-        """Test fuzzy string matching."""
-        with patch('pathlib.Path.exists') as mock_exists, \
-                patch('builtins.open', mock_open(read_data=sample_sensitive_terms)):
+            pytest.assume(checker.fuzzy_threshold == 0.85)
+            pytest.assume(checker.min_length == 2)
+            pytest.assume(len(checker.sensitive_terms) == 5)
+            pytest.assume("John Smith" in checker.name_terms)
+
+    def test_fuzzy_matching(
+        self: "TestFuzzyChecker",
+        mock_config: RedactionConfig,
+        sample_sensitive_terms: str,
+    ) -> None:
+        """Test fuzzy string matching.
+
+        Args:
+            mock_config: Test configuration fixture
+            sample_sensitive_terms: Sample terms fixture
+        """
+        with (
+            patch("pathlib.Path.exists") as mock_exists,
+            patch("builtins.open", mock_open(read_data=sample_sensitive_terms)),
+        ):
             mock_exists.return_value = True
             checker = FuzzyChecker(mock_config)
 
-            # Test with similar but not identical names
-            segments = [{'text': 'Jon Smyth was present at the hearing'}]
+            segments = [{"text": "Jon Smyth was present at the hearing"}]
             matches = checker.find_similar_terms(segments)
 
-            assert len(matches) >= 1
-            assert any(m.matched_term == 'John Smith' for m in matches)
-            assert all(isinstance(m, FuzzyMatch) for m in matches)
+            pytest.assume(len(matches) >= 1)
+            pytest.assume(any(m.matched_term == "John Smith" for m in matches))
+            pytest.assume(all(isinstance(m, FuzzyMatch) for m in matches))
 
-    def test_phonetic_matching(self, mock_config, sample_sensitive_terms):
-        """Test phonetic matching for names."""
-        with patch('pathlib.Path.exists') as mock_exists, \
-                patch('builtins.open', mock_open(read_data=sample_sensitive_terms)):
+    def test_phonetic_matching(
+        self: "TestFuzzyChecker",
+        mock_config: RedactionConfig,
+        sample_sensitive_terms: str,
+    ) -> None:
+        """Test phonetic matching for names.
+
+        Args:
+            mock_config: Test configuration fixture
+            sample_sensitive_terms: Sample terms fixture
+        """
+        with (
+            patch("pathlib.Path.exists") as mock_exists,
+            patch("builtins.open", mock_open(read_data=sample_sensitive_terms)),
+        ):
             mock_exists.return_value = True
             checker = FuzzyChecker(mock_config)
 
-            # Test with phonetically similar names
-            segments = [{'text': 'Robbert Joanes attended the meeting'}]
+            segments = [{"text": "Robbert Joanes attended the meeting"}]
             matches = checker.find_similar_terms(segments)
 
-            assert len(matches) >= 1
-            assert any(m.matched_term == 'Robert Jones' for m in matches)
-            assert any(m.match_type == 'phonetic' for m in matches)
+            pytest.assume(len(matches) >= 1)
+            pytest.assume(any(m.matched_term == "Robert Jones" for m in matches))
+            pytest.assume(any(m.match_type == "phonetic" for m in matches))
 
-    def test_address_matching(self, mock_config, sample_sensitive_terms):
-        """Test matching of address patterns."""
-        with patch('pathlib.Path.exists') as mock_exists, \
-                patch('builtins.open', mock_open(read_data=sample_sensitive_terms)):
+    def test_address_matching(
+        self: "TestFuzzyChecker",
+        mock_config: RedactionConfig,
+        sample_sensitive_terms: str,
+    ) -> None:
+        """Test matching of address patterns.
+
+        Args:
+            mock_config: Test configuration fixture
+            sample_sensitive_terms: Sample terms fixture
+        """
+        with (
+            patch("pathlib.Path.exists") as mock_exists,
+            patch("builtins.open", mock_open(read_data=sample_sensitive_terms)),
+        ):
             mock_exists.return_value = True
             checker = FuzzyChecker(mock_config)
 
-            # Test with similar address
-            segments = [{'text': 'They lived at 123 Maine Street'}]
+            segments = [{"text": "They lived at 123 Maine Street"}]
             matches = checker.find_similar_terms(segments)
 
-            assert len(matches) >= 1
-            assert any('123 Main Street' in m.matched_term for m in matches)
+            pytest.assume(len(matches) >= 1)
+            pytest.assume(any("123 Main Street" in m.matched_term for m in matches))
 
-    def test_phone_number_matching(self, mock_config, sample_sensitive_terms):
-        """Test matching of phone number patterns."""
-        with patch('pathlib.Path.exists') as mock_exists, \
-                patch('builtins.open', mock_open(read_data=sample_sensitive_terms)):
+    def test_phone_number_matching(
+        self: "TestFuzzyChecker",
+        mock_config: RedactionConfig,
+        sample_sensitive_terms: str,
+    ) -> None:
+        """Test matching of phone number patterns.
+
+        Args:
+            mock_config: Test configuration fixture
+            sample_sensitive_terms: Sample terms fixture
+        """
+        with (
+            patch("pathlib.Path.exists") as mock_exists,
+            patch("builtins.open", mock_open(read_data=sample_sensitive_terms)),
+        ):
             mock_exists.return_value = True
             checker = FuzzyChecker(mock_config)
 
-            # Test with similar phone number
-            segments = [{'text': 'Contact number is +44 7700 900 123'}]
+            segments = [{"text": "Contact number is +44 7700 900 123"}]
             matches = checker.find_similar_terms(segments)
 
-            assert len(matches) >= 1
-            assert any('+44 7700 900123' in m.matched_term for m in matches)
+            pytest.assume(len(matches) >= 1)
+            pytest.assume(any("+44 7700 900123" in m.matched_term for m in matches))
 
-    def test_save_matches(self, mock_config, sample_sensitive_terms):
-        """Test saving matches to JSON."""
-        # First mock for loading sensitive terms
+    def test_save_matches(
+        self: "TestFuzzyChecker",
+        mock_config: RedactionConfig,
+        sample_sensitive_terms: str,
+    ) -> None:
+        """Test saving matches to JSON.
+
+        Args:
+            mock_config: Test configuration fixture
+            sample_sensitive_terms: Sample terms fixture
+        """
         mock_file = mock_open(read_data=sample_sensitive_terms)
-
-        # Create a second mock for the output file
         output_mock = mock_open()
-
-        # Combine the mocks
         mock_file.side_effect = [
-            mock_open(read_data=sample_sensitive_terms)(),  # For loading terms
-            output_mock()  # For saving matches
+            mock_open(read_data=sample_sensitive_terms)(),
+            output_mock(),
         ]
 
-        with patch('pathlib.Path.exists') as mock_exists, \
-                patch('builtins.open', mock_file):
+        with (
+            patch("pathlib.Path.exists") as mock_exists,
+            patch("builtins.open", mock_file),
+        ):
             mock_exists.return_value = True
             checker = FuzzyChecker(mock_config)
-            segments = [{'text': 'Jon Smyth and Robert Joanes were present'}]
+            segments = [{"text": "Jon Smyth and Robert Joanes were present"}]
             matches = checker.find_similar_terms(segments)
 
-            # Test saving matches
-            output_path = Path('test_output.json')
+            output_path = Path("test_output.json")
             checker.save_matches(matches, output_path)
 
-            # Verify that write was called
             output_mock().write.assert_called()
-            # Check that the written data is valid JSON and contains expected data
             write_call_args = output_mock().write.call_args[0][0]
-            assert len(write_call_args) > 0
-            # Verify we can parse it as JSON
+            pytest.assume(len(write_call_args) > 0)
+
             saved_data = json.loads(write_call_args)
-            assert isinstance(saved_data, list)
-            assert len(saved_data) > 0
-            assert 'matched_term' in saved_data[0]
+            pytest.assume(isinstance(saved_data, list))
+            pytest.assume(len(saved_data) > 0)
+            pytest.assume("matched_term" in saved_data[0])
 
-    def test_error_handling(self, mock_config):
-        """Test error handling for missing files and invalid input."""
-        # Test with non-existent sensitive terms file
-        checker = FuzzyChecker(mock_config)
-        assert len(checker.sensitive_terms) == 0  # Should handle missing file gracefully
+        def test_error_handling(
+            self: "TestFuzzyChecker",
+            mock_config: RedactionConfig,
+        ) -> None:
+            """Test error handling for missing files and invalid input.
 
-        # Test with empty segments
-        matches = checker.find_similar_terms([])
-        assert len(matches) == 0
+            Args:
+                self: Instance of the test class
+                mock_config: Test configuration fixture
+            """
+            checker = FuzzyChecker(mock_config)
+            pytest.assume(len(checker.sensitive_terms) == 0)
 
-        # Test with None text
-        matches = checker.find_similar_terms([{'text': None}])
-        assert len(matches) == 0
+            matches = checker.find_similar_terms([])
+            pytest.assume(len(matches) == 0)
+
+            matches = checker.find_similar_terms([{"text": ""}])
+            pytest.assume(len(matches) == 0)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     pytest.main([__file__])

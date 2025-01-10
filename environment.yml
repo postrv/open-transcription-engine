@@ -55,3 +55,4 @@ dependencies:
     - soundfile>=0.13.0
     - PyAudio>=0.2.14
     - pytorch-lightning>=2.5.0
+    - pyannote.audio>=3.1
