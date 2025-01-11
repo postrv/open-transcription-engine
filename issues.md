@@ -2,13 +2,27 @@
 
 ## Core UI Improvements
 
+
 ### Timeline & Audio Visualization
-- [ ] Evaluate and choose between horizontal timeline vs current vertical list layout
-- [ ] Integrate wavesurfer.js for audio visualization
-  - [ ] Add waveform display synchronized with transcript
-  - [ ] Implement click-to-seek functionality
-  - [ ] Add playback controls (play/pause/stop)
-  - [ ] Display current time and segment highlighting
+- [x] Implement vertical list layout
+- [x] Integrate wavesurfer.js for audio visualization
+  - [x] Add waveform display synchronized with transcript
+  - [x] Implement click-to-seek functionality
+  - [x] Add playback controls (play/pause/stop)
+  - [x] Display current time and segment highlighting
+
+### File Upload and Processing
+- [ ] Connect upload endpoint to transcription engine
+  - [ ] Create background task system for processing uploads
+  - [ ] Add progress tracking for transcription
+  - [ ] Implement websocket for real-time status updates
+- [ ] Add upload validation
+  - [ ] File size limits
+  - [ ] Audio format validation
+  - [ ] Duration checks
+- [ ] Improve error handling
+  - [ ] User-friendly error messages
+  - [ ] Retry mechanism for failed uploads
 
 ### Speaker Management
 - [ ] Implement color-coding system for speakers
