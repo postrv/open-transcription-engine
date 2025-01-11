@@ -159,6 +159,195 @@ audio_data = audio_recorder.stop_recording()
 segments = whisper_manager.transcribe(audio_data, sample_rate=16000)
 ```
 
+# Testing Guide - Open Transcription Engine
+
+## Setup
+
+1. **Environment Setup**
+```bash
+# Create and activate environment
+conda env create -f environment.yml
+conda activate whisper
+
+# Install pre-commit hooks
+pre-commit install
+```
+
+2. **Configuration**
+```bash
+# Create config directory if it doesn't exist
+mkdir -p config
+
+# Copy the default configuration
+cp config/default.yml config/default.yml
+
+# Create sensitive phrases file
+echo "John Smith
+Jane Doe
++44 7700 900123
+123 Main Street
+London SW1" > config/sensitive_phrases.txt
+```
+
+## Running the Application
+
+1. **Start the FastAPI server**
+```bash
+# From the project root
+python -m uvicorn transcription_engine.timeline_visualization.timeline_ui:app --reload --port 8000
+```
+
+2. **Build and watch frontend (in a new terminal)**
+```bash
+cd transcription_engine/static
+npm install
+npm run dev
+```
+
+## Available Endpoints
+
+### 1. Timeline UI
+- Web Interface: `http://localhost:8000/`
+- Provides visual interface for transcript review and redaction
+
+### 2. API Endpoints
+
+#### Transcript Management
+- `POST /api/transcript/load`
+  ```bash
+  curl -X POST http://localhost:8000/api/transcript/load \
+    -H "Content-Type: application/json" \
+    -d @test.json
+  ```
+
+- `GET /api/transcript`
+  ```bash
+  curl http://localhost:8000/api/transcript
+  ```
+
+#### Redaction
+- `POST /api/redaction`
+  ```bash
+  curl -X POST http://localhost:8000/api/redaction \
+    -H "Content-Type: application/json" \
+    -d '{
+      "start_time": 0.5,
+      "end_time": 1.5,
+      "text": "sensitive information",
+      "reason": "Personal information"
+    }'
+  ```
+
+## Testing Your MP3 File
+
+1. **Using Python API**
+```python
+from pathlib import Path
+from transcription_engine.audio_input.recorder import AudioLoader
+from transcription_engine.whisper_engine.transcriber import WhisperManager
+from transcription_engine.redaction.redactor import TranscriptRedactor
+
+# Load audio file
+audio_data, sample_rate = AudioLoader.load_file("path_to_your_court_trial.mp3")
+
+# Initialize Whisper (uses MPS on M1 Mac by default)
+whisper_manager = WhisperManager()
+whisper_manager.load_model()
+
+# Transcribe
+segments = whisper_manager.transcribe(audio_data, sample_rate)
+
+# Initialize redactor
+redactor = TranscriptRedactor()
+
+# Auto-redact sensitive information
+redacted_segments, matches = redactor.auto_redact(segments)
+
+# Save results
+import json
+with open("transcript_output.json", "w") as f:
+    json.dump({
+        "segments": redacted_segments,
+        "matches": [vars(m) for m in matches]
+    }, f, indent=2)
+```
+
+2. **Using Timeline UI**
+```python
+# Start server then run:
+import requests
+import json
+
+# Load transcript
+with open("transcript_output.json") as f:
+    transcript = json.load(f)
+
+# Send to API
+response = requests.post(
+    "http://localhost:8000/api/transcript/load",
+    json=transcript["segments"]
+)
+print(response.json())
+
+# Now visit http://localhost:8000 to view and edit
+```
+
+## Running Tests
+
+```bash
+# Run all tests
+pytest
+
+# Run specific test file
+pytest transcription_engine/tests/test_recorder.py
+
+# Run with coverage
+pytest --cov=transcription_engine
+
+# Run with detailed output
+pytest -v
+```
+
+## Common Issues
+
+1. **MPS/GPU Issues**
+- If you encounter MPS errors, the system will fallback to CPU
+- Check GPU status:
+```python
+import torch
+print(f"MPS available: {torch.backends.mps.is_available()}")
+print(f"CUDA available: {torch.cuda.is_available()}")
+```
+
+2. **Audio File Issues**
+- Supported formats: WAV, MP3, FLAC, OGG, M4A
+- For unsupported formats, convert using ffmpeg:
+```bash
+ffmpeg -i input.xxx output.mp3
+```
+
+3. **Memory Issues**
+- Whisper models have different memory requirements:
+  - tiny: 1GB
+  - base: 1GB
+  - small: 2GB
+  - medium: 5GB
+  - large: 10GB
+- Adjust model size in config/default.yml if needed
+
+## Development Testing
+
+For development, you can use the test data provided:
+```python
+# Load test transcript
+with open("transcription_engine/tests/data/test.json") as f:
+    test_data = json.load(f)
+
+# Use test phrases
+with open("transcription_engine/tests/data/test_phrases.txt") as f:
+    test_phrases = f.read().splitlines()
+```
+
 ## Contributing
 
 1. Fork the repository
