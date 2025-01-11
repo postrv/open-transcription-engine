@@ -285,11 +285,15 @@ class WhisperManager:
             # Process segments
             segments = []
             if isinstance(result, dict) and "chunks" in result:
-                for chunk in result["chunks"]:
+                total_chunks = len(result["chunks"])
+                for i, chunk in enumerate(result["chunks"]):
                     # Get timestamp from either format
                     timestamps = chunk.get("timestamp", [])
                     if isinstance(timestamps, list | tuple) and len(timestamps) == 2:
                         start, end = timestamps
+                        if end is None:
+                            logger.warning("Missing end timestamp in chunk: %s", chunk)
+                            continue
                     else:
                         logger.warning("Invalid timestamp format in chunk: %s", chunk)
                         continue
@@ -302,6 +306,11 @@ class WhisperManager:
                             confidence=chunk.get("confidence", 0.0),
                         ),
                     )
+
+                    # Calculate progress and call the callback
+                    if progress_callback:
+                        progress = (i + 1) / total_chunks * 100
+                        progress_callback(progress)
 
             # Apply timestamp post-processing
             segments = self._process_timestamps(segments)

@@ -172,7 +172,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--model",
         choices=valid_models,
-        default="large",
+        default="small",
         help="Whisper model size to use",
     )
 
