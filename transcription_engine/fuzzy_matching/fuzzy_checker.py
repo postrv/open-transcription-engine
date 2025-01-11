@@ -6,9 +6,9 @@ Uses rapidfuzz for efficient fuzzy string matching and phonetics for name matchi
 
 import json
 import logging
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import TypeVar
+from typing import Any, TypeVar
 
 import jellyfish  # For phonetic matching
 from rapidfuzz import fuzz, process
@@ -33,6 +33,14 @@ class FuzzyMatch:
     start_pos: int
     end_pos: int
     match_type: str  # 'fuzzy', 'phonetic', or 'partial'
+
+    def to_dict(self: "FuzzyMatch") -> dict[str, Any]:
+        """Convert the FuzzyMatch to a dictionary for JSON serialization.
+
+        Returns:
+            Dictionary representation of the FuzzyMatch
+        """
+        return asdict(self)
 
 
 class FuzzyChecker:
@@ -216,18 +224,7 @@ class FuzzyChecker:
             json.JSONDecodeError: If there are JSON serialization errors
         """
         try:
-            matches_dict = [
-                {
-                    "original_text": m.original_text,
-                    "matched_term": m.matched_term,
-                    "matched_phrase": m.matched_phrase,
-                    "confidence": float(m.confidence),
-                    "start_pos": m.start_pos,
-                    "end_pos": m.end_pos,
-                    "match_type": m.match_type,
-                }
-                for m in matches
-            ]
+            matches_dict = [match.to_dict() for match in matches]
 
             # Create parent directories if they don't exist
             output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -242,6 +239,9 @@ class FuzzyChecker:
 
             logger.info("Saved %d matches to %s", len(matches), output_path)
 
-        except (OSError, json.JSONDecodeError) as e:
+        except OSError as e:
             logger.error("Error saving matches: %s", e)
+            raise
+        except Exception as e:
+            logger.error("Unexpected error saving matches: %s", e)
             raise

@@ -7,7 +7,7 @@ Supports both pattern-based redaction and user-defined redaction zones.
 
 import json
 import logging
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +29,14 @@ class RedactionZone:
     redaction_type: str  # 'auto' or 'manual'
     confidence: float = 1.0
 
+    def to_dict(self: "RedactionZone") -> dict[str, Any]:
+        """Convert the RedactionZone to a dictionary for JSON serialization.
+
+        Returns:
+            Dictionary representation of the RedactionZone
+        """
+        return asdict(self)
+
 
 class TranscriptRedactor:
     """Handles automatic and manual redaction of sensitive information."""
@@ -39,12 +47,35 @@ class TranscriptRedactor:
         self.fuzzy_checker = FuzzyChecker(self.config)
         self.redaction_char = self.config.redaction_char
 
+    def _prepare_segment_for_json(
+        self: "TranscriptRedactor",
+        segment: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Prepare a segment for JSON serialization.
+
+        Args:
+            segment: Segment dictionary to prepare
+
+        Returns:
+            JSON-serializable segment dictionary
+        """
+        # Create a copy to avoid modifying the original
+        processed_segment = segment.copy()
+
+        # Convert RedactionZone objects to dictionaries
+        if "redaction_zones" in processed_segment:
+            processed_segment["redaction_zones"] = [
+                zone.to_dict() if isinstance(zone, RedactionZone) else zone
+                for zone in processed_segment["redaction_zones"]
+            ]
+
+        return processed_segment
+
     def auto_redact(
         self: "TranscriptRedactor",
         segments: list[TranscriptionSegment],
     ) -> tuple[list[dict[str, Any]], list[FuzzyMatch]]:
         """Automatically redact sensitive information from transcript segments."""
-        ...
         # Convert segments to format expected by fuzzy checker
         segment_dicts = [{"text": seg.text} for seg in segments]
 
@@ -108,7 +139,6 @@ class TranscriptRedactor:
         user_zones: list[RedactionZone],
     ) -> list[dict[str, Any]]:
         """Apply manual redactions based on user-defined zones."""
-        ...
         redacted_segments = []
 
         for segment in segments:
@@ -162,8 +192,17 @@ class TranscriptRedactor:
         segments: list[dict[str, Any]],
         output_path: Path,
     ) -> None:
-        """Save redacted transcript with metadata to file."""
-        ...
+        """Save redacted transcript with metadata to file.
+
+        Args:
+            segments: List of transcript segments with redactions
+            output_path: Path where to save the JSON file
+
+        Raises:
+            ValueError: If no segments provided
+            OSError: If there are filesystem-related errors
+            json.JSONDecodeError: If there are JSON serialization errors
+        """
         if not segments:
             msg = "No segments provided to save"
             raise ValueError(msg)
@@ -171,8 +210,13 @@ class TranscriptRedactor:
         try:
             output_path.parent.mkdir(parents=True, exist_ok=True)
 
+            # Process segments for JSON serialization
+            processed_segments = [
+                self._prepare_segment_for_json(segment) for segment in segments
+            ]
+
             output_data = {
-                "segments": segments,
+                "segments": processed_segments,
                 "redaction_stats": {
                     "total_segments": len(segments),
                     "redacted_segments": len(
@@ -181,8 +225,11 @@ class TranscriptRedactor:
                 },
             }
 
+            # Write atomically by first converting to string
+            json_str = json.dumps(output_data, indent=2)
             with open(output_path, "w") as f:
-                json.dump(output_data, f, indent=2)
+                f.write(json_str)
+                f.flush()  # Ensure content is written
 
             logger.info("Saved redacted transcript to %s", output_path)
 
