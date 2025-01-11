@@ -20,6 +20,8 @@ logger = logging.getLogger(__name__)
 
 # Type variable for the FuzzyChecker class
 T = TypeVar("T", bound="FuzzyChecker")
+# Type variable for dataclasses
+D = TypeVar("D", bound="FuzzyMatch")
 
 
 @dataclass
@@ -34,7 +36,7 @@ class FuzzyMatch:
     end_pos: int
     match_type: str  # 'fuzzy', 'phonetic', or 'partial'
 
-    def to_dict(self: "FuzzyMatch") -> dict[str, Any]:
+    def to_dict(self: D) -> dict[str, Any]:
         """Convert the FuzzyMatch to a dictionary for JSON serialization.
 
         Returns:

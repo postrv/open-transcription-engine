@@ -9,7 +9,7 @@ import json
 import logging
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 from ..fuzzy_matching.fuzzy_checker import FuzzyChecker, FuzzyMatch
 from ..utils.config import config_manager
@@ -28,8 +28,9 @@ class RedactionZone:
     reason: str
     redaction_type: str  # 'auto' or 'manual'
     confidence: float = 1.0
+    _DataclassT = TypeVar("_DataclassT", bound="RedactionZone")
 
-    def to_dict(self: "RedactionZone") -> dict[str, Any]:
+    def to_dict(self: _DataclassT) -> dict[str, Any]:
         """Convert the RedactionZone to a dictionary for JSON serialization.
 
         Returns:
