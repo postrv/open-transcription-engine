@@ -6,10 +6,13 @@ Provides a web interface using FastAPI and React for transcript visualization.
 
 import json
 import logging
+import shutil
+import time
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -19,6 +22,15 @@ logger = logging.getLogger(__name__)
 
 # Initialize FastAPI app
 app = FastAPI(title="Transcript Timeline Viewer")
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],  # Development server
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Type alias for transcript data
 TranscriptData = list[dict[str, Any]]
@@ -38,7 +50,7 @@ class RedactionRequest(BaseModel):
 
 
 @app.get("/", response_class=HTMLResponse)  # type: ignore
-async def serve_html() -> Response:
+async def serve_html() -> HTMLResponse:
     """Serve the main HTML template.
 
     Returns:
@@ -164,11 +176,62 @@ async def add_redaction_endpoint(redaction: RedactionRequest) -> dict[str, str]:
     raise HTTPException(status_code=400, detail=segment_error)
 
 
-# Mount static files
+# First, mount the static files properly with correct paths
 try:
-    app.mount("/static", StaticFiles(directory="static/dist"), name="static")
-except RuntimeError:
-    logger.warning("Static files directory not found at static/dist")
+    # Mount the uploads directory first (more specific path)
+    app.mount(
+        "/uploads",
+        StaticFiles(directory="transcription_engine/static/uploads"),
+        name="uploads",
+    )
+
+    # Mount the main static files (built React app) - this should serve from dist
+    app.mount(
+        "/static",
+        StaticFiles(directory="transcription_engine/static/dist"),
+        name="static",
+    )
+except RuntimeError as e:
+    logger.warning("Static files directory not found: %s", e)
+
+
+@app.post("/api/upload-audio")  # type: ignore
+async def upload_audio(file: Annotated[UploadFile, File()]) -> dict[str, str]:
+    """Handle audio file upload.
+
+    Args:
+        file: Uploaded audio file
+
+    Returns:
+        Dictionary containing the URL of the uploaded file
+
+    Raises:
+        HTTPException: If there's an error during file upload
+    """
+    try:
+        # Create uploads directory if it doesn't exist
+        uploads_dir = Path("transcription_engine/static/uploads")
+        uploads_dir.mkdir(parents=True, exist_ok=True)
+
+        file_extension = Path(file.filename).suffix if file.filename else ".mp3"
+        safe_filename = f"audio_{int(time.time())}{file_extension}"
+        file_path = uploads_dir / safe_filename
+
+        # Save uploaded file
+        with file_path.open("wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+        # Return URL for frontend
+        return {
+            "url": f"/uploads/{safe_filename}"
+        }  # Keep this as /uploads to match mount point
+
+    except (OSError, ValueError) as e:
+        logger.error("Error uploading audio: %s", e)
+        raise HTTPException(
+            status_code=500,
+            detail=str(e),
+        ) from e
 
 
 class TimelineUI:

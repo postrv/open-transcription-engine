@@ -47,6 +47,9 @@ output/
 temp/
 logs/
 court_proceeding.mp3
+transcription_engine/static/uploads/
+transcription_engine/static/uploads/*
+audio_*.mp3
 
 # Audio files
 *.mp3
