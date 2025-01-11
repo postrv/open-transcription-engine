@@ -20,12 +20,13 @@ A local/offline transcription engine focused on generating accurate and privacy-
 
 ### Frontend Improvements Needed
 
-- Add waveform visualization using wavesurfer.js
-- Implement keyboard shortcuts for timeline navigation
-- Add real-time progress updates
-- Improve redaction zone UI/UX
-- Add export options (PDF, SRT, plain text)
-
+- [x] Add waveform visualization using wavesurfer.js
+- [ ] Connect audio upload to transcription pipeline
+- [ ] Implement keyboard shortcuts for timeline navigation
+- [ ] Add real-time progress updates during transcription
+- [ ] Improve redaction zone UI/UX
+- [x] Basic JSON export implemented
+- [ ] Add additional export formats (PDF, SRT, plain text)
 
 ### Code Quality
 
@@ -40,7 +41,6 @@ A local/offline transcription engine focused on generating accurate and privacy-
 - Missing comprehensive documentation for court staff
 - No clear deployment guide
 - Security considerations not fully documented
-
 
 
 ## 🎯 Immediate Next Steps
@@ -191,7 +191,7 @@ pytest transcription_engine/tests/test_recorder.py
 
 ## Usage
 
-Currently in development. Basic usage:
+Currently, in development. Basic usage:
 
 ```python
 from transcription_engine.audio_input import recorder
