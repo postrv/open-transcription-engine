@@ -22,7 +22,7 @@ audio:
 diarization:
   enabled: true
   use_pyannote: true
-  auth_token: null  # Set via environment variable or config
+  auth_token: null  # Set via environment variable or config - .env excluded from git
   device: auto  # Will follow same logic as whisper.device
 
 redaction:

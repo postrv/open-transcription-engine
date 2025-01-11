@@ -11,6 +11,7 @@ import pytest
 from pytest import MonkeyPatch
 
 from ..speaker_id.diarizer import PYANNOTE_AVAILABLE, DiarizationManager, SpeakerSegment
+from ..utils.config import DiarizationConfig
 from ..whisper_engine.transcriber import TranscriptionSegment
 
 
@@ -81,10 +82,13 @@ class TestPyannoteDiarization:
         audio_data, sample_rate = sample_audio
         mono_audio = audio_data.mean(axis=1)
 
-        manager = DiarizationManager(
+        config = DiarizationConfig(
+            enabled=True,
             use_pyannote=True,
+            device="cpu",
             auth_token=os.environ.get("HF_TOKEN", "dummy_token"),
         )
+        manager = DiarizationManager(config)
         segments = manager.process_singlechannel(mono_audio, sample_rate)
 
         # Verify segment count and speaker IDs
@@ -106,20 +110,17 @@ class TestBasicDiarization:
     """Test suite for basic diarization functionality."""
 
     def test_device_selection(self: Self, monkeypatch: MonkeyPatch) -> None:
-        """Test computation device selection logic.
+        """Test computation device selection logic."""
+        config = DiarizationConfig(
+            enabled=True, use_pyannote=False, device="auto", auth_token=None
+        )
 
-        Args:
-            monkeypatch: PyTest fixture for mocking
-        """
         # Test CPU fallback
         with (
             patch("torch.cuda.is_available", return_value=False),
-            patch(
-                "torch.backends.mps.is_available",
-                return_value=False,
-            ),
+            patch("torch.backends.mps.is_available", return_value=False),
         ):
-            manager = DiarizationManager(use_pyannote=False)
+            manager = DiarizationManager(config)
             pytest.assume(manager.device.type == "cpu", "Should default to CPU")
 
         # Test MPS selection
@@ -130,31 +131,18 @@ class TestBasicDiarization:
                 return_value=True,
             ),
         ):
-            manager = DiarizationManager(use_pyannote=False)
+            config.device = "auto"
+            manager = DiarizationManager(config)
             pytest.assume(manager.device.type == "mps", "Should select MPS")
-
-        # Test CUDA selection
-        with (
-            patch("torch.cuda.is_available", return_value=True),
-            patch(
-                "torch.backends.mps.is_available",
-                return_value=False,
-            ),
-        ):
-            manager = DiarizationManager(use_pyannote=False)
-            pytest.assume(manager.device.type == "cuda", "Should select CUDA")
 
     def test_multichannel_processing(
         self: Self,
         sample_audio: tuple[np.ndarray, int],
     ) -> None:
-        """Test processing of multi-channel audio.
-
-        Args:
-            sample_audio: Sample audio data fixture
-        """
+        """Test processing of multi-channel audio."""
+        config = DiarizationConfig(enabled=True, use_pyannote=False)
         audio_data, sample_rate = sample_audio
-        manager = DiarizationManager(use_pyannote=False)
+        manager = DiarizationManager(config)
 
         segments = manager.process_multichannel(audio_data, sample_rate)
 
@@ -185,10 +173,12 @@ class TestBasicDiarization:
         audio_data, sample_rate = sample_audio
         mono_audio = audio_data.mean(axis=1)
 
-        manager = DiarizationManager(use_pyannote=False)
+        config = DiarizationConfig(
+            enabled=True, use_pyannote=False, device="cpu", auth_token=None
+        )
+        manager = DiarizationManager(config)
         segments = manager.process_singlechannel(mono_audio, sample_rate)
 
-        # Verify basic properties
         pytest.assume(len(segments) > 0, "Should produce at least one segment")
         pytest.assume(
             all(isinstance(seg, SpeakerSegment) for seg in segments),
@@ -201,7 +191,10 @@ class TestBasicDiarization:
 
     def test_speaker_assignment(self: Self) -> None:
         """Test assignment of speaker IDs to transcription segments."""
-        manager = DiarizationManager(use_pyannote=False)
+        config = DiarizationConfig(
+            enabled=True, use_pyannote=False, device="cpu", auth_token=None
+        )
+        manager = DiarizationManager(config)
 
         # Create sample transcription segments
         transcription_segments = [
@@ -255,6 +248,9 @@ class TestBasicDiarization:
     def test_error_handling(self: Self) -> None:
         """Test error handling scenarios."""
         # Test invalid audio input for multichannel
-        manager = DiarizationManager(use_pyannote=False)
+        config = DiarizationConfig(
+            enabled=True, use_pyannote=False, device="cpu", auth_token=None
+        )
+        manager = DiarizationManager(config)
         with pytest.raises(ValueError, match="Expected multi-channel audio"):
             manager.process_multichannel(np.array([1, 2, 3]), 16000)

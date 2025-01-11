@@ -267,24 +267,13 @@ class WhisperManager:
         try:
             # Prepare audio
             audio_data = self._prepare_audio(audio_data, sample_rate)
-            total_duration = len(audio_data) / 16000  # Duration in seconds
-
-            # Track progress
-            processed_duration = 0.0
-
-            def progress_tracker(audio_chunk: np.ndarray) -> None:
-                nonlocal processed_duration
-                chunk_duration = len(audio_chunk) / 16000
-                processed_duration += chunk_duration
-                if progress_callback:
-                    progress_callback((processed_duration / total_duration) * 100)
 
             # Run transcription with optimized settings
             result = self.model(
                 audio_data,
                 chunk_length_s=self.config.chunk_length_s,
                 batch_size=self.config.batch_size,
-                return_timestamps=True,
+                return_timestamps=True,  # Changed from "word" to True
                 generate_kwargs={
                     "language": self.config.language
                     if self.config.language != "auto"
@@ -295,15 +284,24 @@ class WhisperManager:
 
             # Process segments
             segments = []
-            for chunk in result["chunks"]:
-                segments.append(
-                    TranscriptionSegment(
-                        text=chunk["text"].strip(),
-                        start=float(chunk["timestamp"][0]),
-                        end=float(chunk["timestamp"][1]),
-                        confidence=chunk.get("confidence", 0.0),
-                    ),
-                )
+            if isinstance(result, dict) and "chunks" in result:
+                for chunk in result["chunks"]:
+                    # Get timestamp from either format
+                    timestamps = chunk.get("timestamp", [])
+                    if isinstance(timestamps, list | tuple) and len(timestamps) == 2:
+                        start, end = timestamps
+                    else:
+                        logger.warning("Invalid timestamp format in chunk: %s", chunk)
+                        continue
+
+                    segments.append(
+                        TranscriptionSegment(
+                            text=chunk["text"].strip(),
+                            start=float(start),
+                            end=float(end),
+                            confidence=chunk.get("confidence", 0.0),
+                        ),
+                    )
 
             # Apply timestamp post-processing
             segments = self._process_timestamps(segments)

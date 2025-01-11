@@ -6,6 +6,7 @@ with support for different environments and GPU configurations.
 """
 
 import logging
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TypeVar
@@ -195,12 +196,21 @@ class ConfigurationManager:
             },
         )
 
+        # Create diarization config with environment variable override for auth token
+        diarization_config = DiarizationConfig(
+            **{
+                **config_dict["diarization"],
+                "auth_token": os.getenv("HUGGINGFACE_TOKEN")
+                or config_dict["diarization"].get("auth_token"),
+            }
+        )
+
         return SystemConfig(
             whisper=whisper_config,
             audio=audio_config,
             redaction=redaction_config,
             security=security_config,
-            diarization=DiarizationConfig(**config_dict["diarization"]),
+            diarization=diarization_config,
             output_dir=Path(config_dict["output_dir"]),
             temp_dir=Path(config_dict["temp_dir"]),
             max_audio_length=config_dict["max_audio_length"],

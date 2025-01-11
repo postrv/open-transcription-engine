@@ -48,19 +48,22 @@ class DiarizationManager:
     """Manages speaker diarization processes."""
 
     def __init__(
-        self: "DiarizationManager",
-        config: DiarizationConfig | None = None,
+        self: "DiarizationManager", config: DiarizationConfig | None = None
     ) -> None:
         """Initialize the diarization manager.
 
         Args:
             config: Optional DiarizationConfig instance
         """
+        self.auth_token = None
         self.config = config or config_manager.load_config().diarization
         self.pipeline: Pipeline | None = None
         self.device = self._setup_device()
-        self.use_pyannote = self.config.use_pyannote and PYANNOTE_AVAILABLE
-        self.auth_token = self.config.auth_token
+        self.use_pyannote = self.config.use_pyannote
+
+        # Initialize pipeline if using pyannote
+        if self.use_pyannote:
+            self._load_pyannote()
 
     def _setup_device(self: T) -> torch.device:
         """Configure the computation device based on availability and config."""
