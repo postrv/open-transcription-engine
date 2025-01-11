@@ -25,6 +25,11 @@ A local/offline transcription engine focused on generating accurate and privacy-
    - Some test assertions need safety improvements
    - Line length violations in tests
 
+3. **Documentation & Usage**
+   - Missing comprehensive documentation for court staff
+   - No clear deployment guide
+   - Security considerations not fully documented
+
 ### 🎯 Immediate Next Steps
 1. **Fix Dependencies**
    ```bash
@@ -43,19 +48,25 @@ A local/offline transcription engine focused on generating accurate and privacy-
    - Add docstrings to __init__.py files
    - Complete API documentation
    - Add architecture diagrams
-   - Create user guides
+   - Create user guides specific to court settings
+
+4. **Security & Privacy**
+   - Implement HuggingFace token management for pyannote
+   - Add data retention policies
+   - Document compliance with UK court requirements
+   - Add secure audio file handling
 
 ## Features
 
 ### Audio Processing
 - Multi-channel audio capture
-- File loading for various formats
+- File loading for various formats (WAV, MP3, FLAC, OGG, M4A)
 - Real-time streaming support
 
 ### Transcription
 - Local Whisper inference
 - Support for multiple GPU types (MPS/CUDA)
-- Configurable model sizes
+- Configurable model sizes (tiny to large)
 
 ### Speaker Identification
 - Channel-based diarization
@@ -79,6 +90,7 @@ A local/offline transcription engine focused on generating accurate and privacy-
    - Python 3.12+
    - Conda/Miniforge
    - Git
+   - PortAudio (for audio capture)
 
 2. **Setup**
    ```bash
@@ -95,8 +107,10 @@ A local/offline transcription engine focused on generating accurate and privacy-
    ```
 
 3. **Configure**
-   - Edit `config/default.yml` for your setup
-   - Default configuration uses MPS on Apple Silicon
+   - Copy `config/default.yml.example` to `config/default.yml`
+   - Configure GPU settings (defaults to MPS on Apple Silicon)
+   - Set up sensitive phrases file
+   - Configure audio settings
 
 ## Development
 
