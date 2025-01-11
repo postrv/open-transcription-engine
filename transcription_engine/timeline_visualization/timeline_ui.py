@@ -84,20 +84,45 @@ async def load_transcript_endpoint(transcript_data: TranscriptData) -> dict[str,
     return {"status": "success", "segments": len(transcript_data)}
 
 
-@app.get("/api/transcript", response_model=TranscriptData)  # type: ignore
-async def get_transcript_endpoint() -> TranscriptData:
+@app.get("/api/transcript", response_model=list[dict[str, Any]])  # type: ignore
+async def get_transcript_endpoint() -> list[dict[str, Any]]:
     """Get the current transcript data.
 
     Returns:
         List of transcript segments
 
     Raises:
-        HTTPException: If no transcript is loaded
+        HTTPException: If transcript file cannot be read or parsed
     """
-    error_msg = "No transcript loaded"
-    if _current_transcript is None:
-        raise HTTPException(status_code=404, detail=error_msg)
-    return _current_transcript
+    try:
+        # Look for redacted transcript in output directory
+        output_dir = Path("output")
+        transcript_files = list(output_dir.glob("*_redacted.json"))
+
+        if not transcript_files:
+            return []
+
+        # Use the most recent transcript file
+        latest_transcript = max(transcript_files, key=lambda p: p.stat().st_mtime)
+
+        try:
+            with open(latest_transcript) as f:
+                data: dict[str, Any] = json.load(f)
+                segments: list[dict[str, Any]] = data.get("segments", [])
+                return segments
+        except (json.JSONDecodeError, KeyError) as e:
+            logger.error("Failed to parse transcript file: %s", e)
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to parse transcript file: {str(e)}",
+            ) from e
+
+    except OSError as e:
+        logger.error("Failed to read transcript files: %s", e)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to read transcript files: {str(e)}",
+        ) from e
 
 
 @app.post("/api/redaction", response_model=dict[str, str])  # type: ignore
