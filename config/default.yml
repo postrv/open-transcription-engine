@@ -1,26 +1,42 @@
 # File: config/default.yml
+whisper:
+  model_size: large  # Using standard large model for now
+  device: mps  # Explicitly use MPS on Apple Silicon
+  language: en
+  batch_size: 8  # Reduced for better MPS memory management
+  compute_type: float32  # MPS works better with float32
+  backend: transformers
+  attn_implementation: sdpa  # Using SDPA since Flash Attention isn't available
+  chunk_length_s: 30
+  progress_bar: true
+  use_cache: true
+  cache_dir: ~/.cache/whisper
+
 audio:
+  sample_rate: 16000
   channels: 1
   chunk_size: 1024
-  device_index: null
   format: wav
-  sample_rate: 16000
-max_audio_length: 3600
-output_dir: output
+  device_index: null
+
+diarization:
+  enabled: true
+  use_pyannote: true
+  auth_token: null  # Set via environment variable or config
+  device: auto  # Will follow same logic as whisper.device
+
 redaction:
-  fuzzy_threshold: 0.85
-  min_phrase_length: 2
-  redaction_char: '*'
   sensitive_phrases_file: config/sensitive_phrases.txt
+  redaction_char: '*'
+  min_phrase_length: 2
+  fuzzy_threshold: 0.85
+
 security:
   audit_logging: true
-  encrypt_audio: false  # Changed from true to false for testing
-  encrypt_transcripts: false  # Changed from true to false for testing
+  encrypt_audio: false
+  encrypt_transcripts: false
   encryption_key_file: null
+
+output_dir: output
 temp_dir: temp
-whisper:
-  batch_size: 16
-  compute_type: float16
-  device: auto
-  language: en
-  model_size: base
+max_audio_length: 3600  # 1 hour

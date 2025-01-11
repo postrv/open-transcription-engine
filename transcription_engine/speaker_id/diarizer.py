@@ -17,7 +17,7 @@ import torch
 from numpy.typing import NDArray
 
 # Move these up before other imports
-from ..utils.config import config_manager
+from ..utils.config import DiarizationConfig, config_manager
 from ..whisper_engine.transcriber import TranscriptionSegment
 
 PYANNOTE_AVAILABLE = importlib.util.find_spec("pyannote") is not None
@@ -49,31 +49,58 @@ class DiarizationManager:
 
     def __init__(
         self: "DiarizationManager",
-        use_pyannote: bool = True,
-        auth_token: str | None = None,
+        config: DiarizationConfig | None = None,
     ) -> None:
         """Initialize the diarization manager.
 
         Args:
-            use_pyannote: Whether to use pyannote.audio for diarization
-            auth_token: HuggingFace auth token for pyannote.audio
+            config: Optional DiarizationConfig instance
         """
-        self.config = config_manager.load_config()
-        self.device = self._setup_device()
+        self.config = config or config_manager.load_config().diarization
         self.pipeline: Pipeline | None = None
-        self.use_pyannote = use_pyannote and PYANNOTE_AVAILABLE
-        self.auth_token = auth_token
+        self.device = self._setup_device()
+        self.use_pyannote = self.config.use_pyannote and PYANNOTE_AVAILABLE
+        self.auth_token = self.config.auth_token
 
-    def _setup_device(self: "DiarizationManager") -> torch.device:
-        """Configure the computation device based on availability."""
-        if torch.backends.mps.is_available():
-            logger.info("Using MPS backend for diarization")
-            return torch.device("mps")
-        elif torch.cuda.is_available():
-            logger.info("Using CUDA backend for diarization")
-            return torch.device("cuda")
-        else:
-            logger.info("Using CPU backend for diarization")
+    def _setup_device(self: T) -> torch.device:
+        """Configure the computation device based on availability and config."""
+        if self.config.device == "auto":
+            # First try MPS on Apple Silicon
+            if torch.backends.mps.is_available():
+                try:
+                    # Test MPS with a small tensor operation
+                    test_tensor = torch.zeros(1).to("mps")
+                    del test_tensor
+                    logger.info("Using MPS backend")
+                    return torch.device("mps")
+                except (RuntimeError, torch.cuda.OutOfMemoryError) as e:
+                    logger.warning(
+                        "MPS available but test failed, falling back to CPU: %s",
+                        e,
+                    )
+
+            # Try CUDA if available
+            if torch.cuda.is_available():
+                logger.info("Using CUDA backend")
+                return torch.device("cuda")
+
+            # CPU fallback
+            logger.info("Using CPU backend")
+            return torch.device("cpu")
+
+        # If specific device requested, try it with fallback
+        try:
+            device = torch.device(self.config.device)
+            # Test the device
+            test_tensor = torch.zeros(1).to(device)
+            del test_tensor
+            return device
+        except (RuntimeError, ValueError) as e:
+            logger.warning(
+                "Requested device %s failed, falling back to CPU: %s",
+                self.config.device,
+                e,
+            )
             return torch.device("cpu")
 
     def _load_pyannote(self: "DiarizationManager") -> bool:

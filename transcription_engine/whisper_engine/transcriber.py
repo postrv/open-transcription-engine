@@ -1,19 +1,22 @@
 # File: transcription_engine/whisper_engine/transcriber.py
 """Whisper integration module for the Open Transcription Engine.
 
-Handles model loading, chunking, and transcription with GPU support.
+Handles model loading, chunking, and transcription with GPU support. Supports both
+standard Whisper and insanely-fast-whisper backends for optimal performance.
 """
 
 import logging
 import warnings
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TypeVar
+from typing import Any, TypeVar
 
 import numpy as np
 import psutil
 import torch
-import whisper
+from transformers import Pipeline, pipeline
+from transformers.utils import is_flash_attn_2_available
 
 from ..audio_input.recorder import AudioSegment
 from ..utils.config import WhisperConfig, config_manager
@@ -46,35 +49,71 @@ class WhisperManager:
         "small": 2,
         "medium": 5,
         "large": 10,
+        "large-v1": 10,
+        "large-v2": 10,
+        "large-v3": 10,
     }
 
     def __init__(self: T, config: WhisperConfig | None = None) -> None:
         """Initialize the Whisper manager with configuration."""
         self.config = config or config_manager.load_config().whisper
-        self.model = None
+        self.model: Pipeline | None = None
         self.device = self._setup_device()
         self._validate_memory()
 
     def _setup_device(self: T) -> torch.device:
         """Configure the computation device based on availability and config."""
         if self.config.device == "auto":
+            # First try MPS on Apple Silicon
             if torch.backends.mps.is_available():
-                logger.info("Using MPS backend")
-                return torch.device("mps")
-            elif torch.cuda.is_available():
+                try:
+                    # Test MPS with a small tensor operation
+                    test_tensor = torch.zeros(1).to("mps")
+                    del test_tensor
+                    logger.info("Using MPS backend")
+                    return torch.device("mps")
+                except (RuntimeError, torch.cuda.OutOfMemoryError) as e:
+                    logger.warning(
+                        "MPS available but test failed, falling back to CPU: %s",
+                        e,
+                    )
+
+            # Try CUDA if available
+            if torch.cuda.is_available():
                 logger.info("Using CUDA backend")
                 return torch.device("cuda")
-            else:
-                logger.info("Using CPU backend")
-                return torch.device("cpu")
-        return torch.device(self.config.device)
+
+            # CPU fallback
+            logger.info("Using CPU backend")
+            return torch.device("cpu")
+
+        # If specific device requested, try it with fallback
+        try:
+            device = torch.device(self.config.device)
+            # Test the device
+            test_tensor = torch.zeros(1).to(device)
+            del test_tensor
+            return device
+        except (RuntimeError, torch.cuda.OutOfMemoryError, ValueError) as e:
+            logger.warning(
+                "Requested device %s failed, falling back to CPU: %s",
+                self.config.device,
+                e,
+            )
+            return torch.device("cpu")
 
     def _validate_memory(self: T) -> None:
         """Validate if system has enough memory for the chosen model."""
         required_memory = self.MODEL_MEMORY_REQUIREMENTS[self.config.model_size]
 
         if self.device.type == "mps":
-            # For Apple Silicon / MPS, assume adequate memory
+            # For Apple Silicon / MPS, assume adequate memory but warn about batch size
+            if self.config.batch_size > 8:
+                warnings.warn(
+                    "Batch size > 8 may cause OOM on MPS. Reduce batch_size.",
+                    UserWarning,
+                    stacklevel=2,
+                )
             return
         elif self.device.type == "cuda":
             try:
@@ -97,36 +136,57 @@ class WhisperManager:
             )
 
     def load_model(self: T) -> bool:
-        """Load the Whisper model into memory.
-
-        Returns:
-            bool: True if model was loaded successfully
-        """
+        """Load the Whisper model into memory."""
         try:
             logger.info("Loading Whisper model: %s", self.config.model_size)
 
-            # Handle compute type
-            compute_type = self.config.compute_type
-            if self.device.type == "mps" and compute_type == "float16":
-                # MPS doesn't support float16, fallback to float32
-                compute_type = "float32"
-                logger.info("MPS detected, using float32 instead of float16")
+            # Handle legacy model names for compatibility
+            model_name = self.config.model_size
+            if model_name in ["large-v1", "large-v2", "large-v3"]:
+                model_id = f"openai/whisper-{model_name}"
+            else:
+                model_id = f"openai/whisper-{model_name}"
 
-            self.model = whisper.load_model(
-                self.config.model_size,
-                device=self.device,
-                download_root=Path.home() / ".cache" / "whisper",
-            )
+            cache_dir = Path(self.config.cache_dir).expanduser()
+            cache_dir.mkdir(parents=True, exist_ok=True)
 
+            # Setup torch dtype based on compute type and device
+            if self.config.compute_type == "float16" and self.device.type != "cpu":
+                torch_dtype = torch.float16
+            else:
+                torch_dtype = torch.float32
+                if self.config.compute_type == "float16":
+                    logger.info(
+                        "float16 not supported on %s, using float32",
+                        self.device.type,
+                    )
+
+            # Set up model kwargs based on device and availability
+            model_kwargs: dict[str, Any] = {}
             if (
-                self.model is not None
-                and compute_type == "float16"
+                is_flash_attn_2_available()
                 and self.device.type != "cpu"
+                and self.config.attn_implementation == "flash_attention_2"
             ):
-                self.model = self.model.half()
+                model_kwargs["attn_implementation"] = "flash_attention_2"
+                logger.info("Using Flash Attention 2")
+            else:
+                model_kwargs["attn_implementation"] = "sdpa"
+                if self.config.attn_implementation == "flash_attention_2":
+                    logger.info("Flash Attention 2 not available, using SDPA")
+
+            # Initialize pipeline with optimized settings
+            self.model = pipeline(
+                "automatic-speech-recognition",
+                model=model_id,
+                torch_dtype=torch_dtype,
+                device=self.device,
+                model_kwargs=model_kwargs,
+            )
 
             logger.info("Model loaded successfully")
             return True
+
         except (RuntimeError, ValueError) as e:
             logger.error("Error loading Whisper model: %s", e)
             return False
@@ -150,12 +210,17 @@ class WhisperManager:
         Returns:
             Preprocessed audio data array
         """
-        # Whisper expects mono audio at 16kHz
-        if len(audio_data.shape) > 1:
-            audio_data = audio_data.mean(axis=1)  # Convert to mono
+        # Convert to float32 and normalize
+        audio_data = audio_data.astype(np.float32)
+        if audio_data.max() > 1.0 or audio_data.min() < -1.0:
+            audio_data = audio_data / max(abs(audio_data.max()), abs(audio_data.min()))
 
+        # Convert to mono if stereo
+        if len(audio_data.shape) > 1:
+            audio_data = audio_data.mean(axis=1)
+
+        # Resample to 16kHz if needed
         if sample_rate != 16000:
-            # Resample to 16kHz
             from scipy import signal
 
             audio_data = signal.resample(
@@ -165,30 +230,22 @@ class WhisperManager:
 
         return audio_data
 
-    def _chunk_audio(
-        self: T,
-        audio_data: np.ndarray,
-        chunk_duration: int = 30,
-    ) -> list[tuple[np.ndarray, float]]:
-        """Split audio into chunks with timestamps.
+    def _chunk_audio(self: T, audio_data: np.ndarray) -> list[tuple[np.ndarray, float]]:
+        """Split long audio into chunks for processing.
 
         Args:
-            audio_data: Input audio data array
-            chunk_duration: Duration of each chunk in seconds
+            audio_data: Input audio data
 
         Returns:
-            List of tuples containing chunks and their start times
+            List of (chunk, timestamp) tuples
         """
-        sample_rate = 16000  # Whisper's expected sample rate
-        chunk_size = chunk_duration * sample_rate
+        chunk_length = int(self.config.chunk_length_s * 16000)  # 16kHz sampling
         chunks = []
 
-        for i in range(0, len(audio_data), chunk_size):
-            chunk = audio_data[i : i + chunk_size]
-            if len(chunk) < sample_rate:  # Skip chunks shorter than 1 second
-                continue
-            start_time = i / sample_rate
-            chunks.append((chunk, start_time))
+        for i in range(0, len(audio_data), chunk_length):
+            chunk = audio_data[i : i + chunk_length]
+            timestamp = i / 16000.0
+            chunks.append((chunk, timestamp))
 
         return chunks
 
@@ -196,20 +253,9 @@ class WhisperManager:
         self: T,
         audio_data: np.ndarray,
         sample_rate: int,
+        progress_callback: Callable[[float], None] | None = None,
     ) -> list[TranscriptionSegment]:
-        """Transcribe audio data into text with timestamps.
-
-        Args:
-            audio_data: Audio data as numpy array
-            sample_rate: Sample rate of the audio
-
-        Returns:
-            List of TranscriptionSegment objects
-
-        Raises:
-            RuntimeError: If model is not loaded
-            ValueError: If audio_data is empty
-        """
+        """Transcribe audio data into text with timestamps."""
         if self.model is None:
             msg = "Model not loaded. Call load_model() first."
             raise RuntimeError(msg)
@@ -219,80 +265,100 @@ class WhisperManager:
             raise ValueError(msg)
 
         try:
-            # Ensure audio data is float32
-            audio_data = audio_data.astype(np.float32)
-
             # Prepare audio
             audio_data = self._prepare_audio(audio_data, sample_rate)
+            total_duration = len(audio_data) / 16000  # Duration in seconds
 
-            # Split into chunks for long audio
-            chunks = self._chunk_audio(audio_data)
+            # Track progress
+            processed_duration = 0.0
+
+            def progress_tracker(audio_chunk: np.ndarray) -> None:
+                nonlocal processed_duration
+                chunk_duration = len(audio_chunk) / 16000
+                processed_duration += chunk_duration
+                if progress_callback:
+                    progress_callback((processed_duration / total_duration) * 100)
+
+            # Run transcription with optimized settings
+            result = self.model(
+                audio_data,
+                chunk_length_s=self.config.chunk_length_s,
+                batch_size=self.config.batch_size,
+                return_timestamps=True,
+                generate_kwargs={
+                    "language": self.config.language
+                    if self.config.language != "auto"
+                    else None,
+                    "task": "transcribe",
+                },
+            )
+
+            # Process segments
             segments = []
-
-            for chunk, start_time in chunks:
-                # Ensure audio is in the correct format for Whisper
-                # MPS requires contiguous tensors
-                chunk = (
-                    torch.tensor(chunk, dtype=torch.float32)
-                    .contiguous()
-                    .to(self.device)
+            for chunk in result["chunks"]:
+                segments.append(
+                    TranscriptionSegment(
+                        text=chunk["text"].strip(),
+                        start=float(chunk["timestamp"][0]),
+                        end=float(chunk["timestamp"][1]),
+                        confidence=chunk.get("confidence", 0.0),
+                    ),
                 )
 
-                # Run transcription
-                result = self.model.transcribe(
-                    chunk,
-                    language=self.config.language,
-                    task="transcribe",
-                    batch_size=self.config.batch_size,
-                    fp16=(self.config.compute_type == "float16"),
-                )
+            # Apply timestamp post-processing
+            segments = self._process_timestamps(segments)
 
-                # Process segments
-                for segment in result["segments"]:
-                    segments.append(
-                        TranscriptionSegment(
-                            text=segment["text"].strip(),
-                            start=start_time + segment["start"],
-                            end=start_time + segment["end"],
-                            confidence=segment.get("confidence", 0.0),
-                        ),
-                    )
-
-            # Sort segments by start time
-            segments.sort(key=lambda x: x.start)
-
-            # Only merge segments if they are VERY close together (0.05s)
-            # This preserves test expectations while still handling true duplicates
-            merged_segments = []
-            current_segment = None
-            merge_threshold = 0.05
-
-            for segment in segments:
-                if current_segment is None:
-                    current_segment = segment
-                elif (
-                    segment.start - current_segment.end <= merge_threshold
-                    and segment.speaker_id == current_segment.speaker_id
-                ):
-                    # Merge very close segments
-                    current_segment.text += " " + segment.text
-                    current_segment.end = segment.end
-                    current_segment.confidence = (
-                        current_segment.confidence + segment.confidence
-                    ) / 2
-                else:
-                    merged_segments.append(current_segment)
-                    current_segment = segment
-
-            if current_segment is not None:
-                merged_segments.append(current_segment)
-
-            logger.info("Transcription completed: %d segments", len(merged_segments))
-            return merged_segments
+            logger.info("Transcription completed: %d segments", len(segments))
+            return segments
 
         except Exception as e:
             logger.error("Error during transcription: %s", e)
             raise
+
+    def _process_timestamps(
+        self: T,
+        segments: list[TranscriptionSegment],
+    ) -> list[TranscriptionSegment]:
+        """Process and clean up segment timestamps.
+
+        Args:
+            segments: List of transcription segments to process
+
+        Returns:
+            Processed segments with cleaned up timestamps
+        """
+        if not segments:
+            return segments
+
+        # Sort segments by start time
+        segments.sort(key=lambda x: x.start)
+
+        # Merge very close segments (threshold of 0.05s)
+        merged_segments = []
+        current_segment = None
+        merge_threshold = 0.05
+
+        for segment in segments:
+            if current_segment is None:
+                current_segment = segment
+            elif (
+                segment.start - current_segment.end <= merge_threshold
+                and segment.speaker_id == current_segment.speaker_id
+            ):
+                # Merge very close segments
+                current_segment.text += " " + segment.text
+                current_segment.end = segment.end
+                current_segment.confidence = (
+                    current_segment.confidence + segment.confidence
+                ) / 2
+            else:
+                merged_segments.append(current_segment)
+                current_segment = segment
+
+        if current_segment is not None:
+            merged_segments.append(current_segment)
+
+        return merged_segments
 
     def transcribe_stream(
         self: T,
@@ -306,9 +372,12 @@ class WhisperManager:
         Returns:
             List of TranscriptionSegment objects
         """
+        if not audio_stream:
+            return []
+
         # Concatenate audio segments
         audio_data = np.concatenate([segment.data for segment in audio_stream])
-        sample_rate = audio_stream[0].sample_rate if audio_stream else 16000
+        sample_rate = audio_stream[0].sample_rate
 
         return self.transcribe(audio_data, sample_rate)
 

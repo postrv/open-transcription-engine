@@ -23,6 +23,17 @@ logger = logging.getLogger(__name__)
 # Type variable for the ConfigurationManager class
 T = TypeVar("T", bound="ConfigurationManager")
 
+VALID_MODELS = {
+    "tiny",
+    "base",
+    "small",
+    "medium",
+    "large",
+    "large-v1",
+    "large-v2",
+    "large-v3",
+}
+
 
 @dataclass
 class WhisperConfig:
@@ -33,6 +44,12 @@ class WhisperConfig:
     language: str  # en, auto, etc.
     batch_size: int
     compute_type: str  # float32, float16, int8
+    backend: str = "transformers"  # transformers or fast
+    attn_implementation: str = "flash_attention_2"  # sdpa or flash_attention_2
+    chunk_length_s: int = 30
+    progress_bar: bool = True
+    use_cache: bool = True
+    cache_dir: str = "~/.cache/whisper"
 
 
 @dataclass
@@ -67,6 +84,16 @@ class SecurityConfig:
 
 
 @dataclass
+class DiarizationConfig:
+    """Configuration for speaker diarization."""
+
+    enabled: bool = True
+    use_pyannote: bool = True
+    auth_token: str | None = None
+    device: str = "auto"  # cpu, cuda, mps, auto
+
+
+@dataclass
 class SystemConfig:
     """Main configuration class containing all settings."""
 
@@ -74,6 +101,7 @@ class SystemConfig:
     audio: AudioConfig
     redaction: RedactionConfig
     security: SecurityConfig
+    diarization: DiarizationConfig  # Add diarization config
     output_dir: Path
     temp_dir: Path
     max_audio_length: int  # maximum length in seconds to process at once
@@ -172,6 +200,7 @@ class ConfigurationManager:
             audio=audio_config,
             redaction=redaction_config,
             security=security_config,
+            diarization=DiarizationConfig(**config_dict["diarization"]),
             output_dir=Path(config_dict["output_dir"]),
             temp_dir=Path(config_dict["temp_dir"]),
             max_audio_length=config_dict["max_audio_length"],
@@ -188,9 +217,8 @@ class ConfigurationManager:
         self.config.temp_dir.mkdir(parents=True, exist_ok=True)
 
         # Validate Whisper settings
-        valid_models = {"tiny", "base", "small", "medium", "large"}
-        if self.config.whisper.model_size not in valid_models:
-            error_message = f"Invalid model size. Must be one of {valid_models}"
+        if self.config.whisper.model_size not in VALID_MODELS:
+            error_message = f"Invalid model size. Must be one of {VALID_MODELS}"
             raise ValueError(error_message)
 
         # Validate audio settings

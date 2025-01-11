@@ -1,5 +1,6 @@
 # File: .gitignore
-.idea/*
+
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
@@ -21,7 +22,8 @@ wheels/
 .installed.cfg
 *.egg
 MANIFEST
-.DS_Store
+
+# Environment
 .env
 .venv
 env/
@@ -29,16 +31,42 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+
+# IDE
 .idea/
 .vscode/
 *.swp
 *.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project specific
 output/
 temp/
 logs/
+court_proceeding.mp3
+
+# Audio files
+*.mp3
+*.wav
+*.flac
+*.ogg
+*.m4a
+*.opus
+
+# Node/Frontend
+node_modules/
+dist/
+.cache/
+
+# Test & Coverage
 .coverage
 coverage.xml
 htmlcov/
 .pytest_cache/
+
+# Tool caches
 .ruff_cache/
 .mypy_cache/
