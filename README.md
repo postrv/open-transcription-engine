@@ -2,11 +2,13 @@
 
 A local/offline transcription engine focused on generating accurate and privacy-respecting court transcripts.
 
-## Project Status: Alpha Development
+### Project Status: Beta Development
 
-### ✅ Completed Core Components
+
+## ✅ Completed Core Components
+
 - Audio recording and processing pipeline with PyAudio
-- Whisper integration with MPS/CUDA/GPU support
+- Whisper integration with MPS/CUDA/GPU support (3hr+ audio in ~20min)
 - Speaker diarization framework (multi-channel + ML-based)
 - Fuzzy matching system for redaction
 - Redaction framework (auto + manual)
@@ -14,47 +16,74 @@ A local/offline transcription engine focused on generating accurate and privacy-
 - Comprehensive test suite
 - Modern Python tooling setup (ruff, mypy, pre-commit)
 
-### 🚧 Current Issues
-1. **Missing Dependencies**
-   - pyannote.audio needs to be installed for speaker diarization
-   - Currently affects one test suite (test_diarizer.py)
+## 🚧 Current Issues
 
-2. **Code Quality**
-   - Type annotations missing in test files
-   - Docstring formatting issues
-   - Some test assertions need safety improvements
-   - Line length violations in tests
+### Frontend Improvements Needed
 
-3. **Documentation & Usage**
-   - Missing comprehensive documentation for court staff
-   - No clear deployment guide
-   - Security considerations not fully documented
+- Add waveform visualization using wavesurfer.js
+- Implement keyboard shortcuts for timeline navigation
+- Add real-time progress updates
+- Improve redaction zone UI/UX
+- Add export options (PDF, SRT, plain text)
 
-### 🎯 Immediate Next Steps
-1. **Fix Dependencies**
-   ```bash
-   # Add to environment.yml
-   pip:
-     - pyannote.audio
-   ```
 
-2. **Code Quality**
-   - Add proper type annotations to test files
-   - Fix docstring formatting
-   - Update assert statements to use pytest's assertion helpers
-   - Address line length issues
+### Code Quality
 
-3. **Documentation**
-   - Add docstrings to __init__.py files
-   - Complete API documentation
-   - Add architecture diagrams
-   - Create user guides specific to court settings
+- Type annotations missing in test files
+- Docstring formatting issues
+- Some test assertions need safety improvements
+- Line length violations in tests
 
-4. **Security & Privacy**
-   - Implement HuggingFace token management for pyannote
-   - Add data retention policies
-   - Document compliance with UK court requirements
-   - Add secure audio file handling
+
+### Documentation & Usage
+
+- Missing comprehensive documentation for court staff
+- No clear deployment guide
+- Security considerations not fully documented
+
+
+
+## 🎯 Immediate Next Steps
+
+### Frontend Enhancement
+
+- Implement audio waveform visualization
+- Add keyboard controls for timeline
+- Improve speaker labeling UI
+- Add auto-save functionality
+- Implement undo/redo for redactions
+
+
+### Code Quality
+
+- Add proper type annotations to test files
+- Fix docstring formatting
+- Update assert statements to use pytest's assertion helpers
+- Address line length issues
+
+
+### Documentation
+
+- Add docstrings to init.py files
+- Complete API documentation
+- Add architecture diagrams
+- Create user guides specific to court settings
+
+
+### Security & Privacy
+
+- Implement HuggingFace token management for pyannote
+- Add data retention policies
+- Document compliance with UK court requirements
+- Add secure audio file handling
+
+
+### Performance Optimization
+
+- Fine-tune MPS memory utilization
+- Add parallel processing for multi-file batches
+- Implement caching for repeated phrases
+- Optimize speaker diarization for long files
 
 ## Features
 
@@ -113,6 +142,28 @@ A local/offline transcription engine focused on generating accurate and privacy-
    - Configure audio settings
 
 ## Development
+
+### Performance Notes
+
+#### Processing Times
+
+- ~20 minutes for 3hr+ files (MPS/M1)
+- Use --model tiny for rapid development
+- Adjust batch_size based on available memory
+
+
+#### Memory Optimization
+
+- Monitor Activity Monitor during processing
+- Default batch_size=8 works well on M1
+- Reduce for older hardware if needed
+
+
+#### GPU Utilization
+
+- MPS performs well on M1/M2
+- CUDA support should work on NVIDIA but is not yet tested
+- Automatic CPU fallback if needed
 
 ### Code Quality Tools
 ```bash
