@@ -1,0 +1,6 @@
+# File: transcription_engine/tests/data/test_phrases.txt
+John Smith
+Jane Doe
++44 7700 900123
+123 Main Street
+London SW1

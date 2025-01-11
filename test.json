@@ -1,0 +1,31 @@
+{
+  "segments": [
+    {
+      "text": "First test segment",
+      "start": 0.0,
+      "end": 2.0,
+      "speaker_id": "SPEAKER_1",
+      "confidence": 0.95,
+      "redaction_zones": [
+        {
+          "start_time": 0.5,
+          "end_time": 1.5,
+          "reason": "Test redaction",
+          "redaction_type": "manual",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "text": "Second test segment",
+      "start": 2.5,
+      "end": 4.5,
+      "speaker_id": "SPEAKER_2",
+      "confidence": 0.92
+    }
+  ],
+  "metadata": {
+    "total_segments": 2,
+    "redacted_segments": 1
+  }
+}

@@ -9,9 +9,8 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.responses import HTMLResponse
-from fastapi.routing import APIRouter
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -20,11 +19,13 @@ logger = logging.getLogger(__name__)
 
 # Initialize FastAPI app
 app = FastAPI(title="Transcript Timeline Viewer")
-router = APIRouter()
-
 
 # Type alias for transcript data
 TranscriptData = list[dict[str, Any]]
+
+# Global state for transcript data
+# Note: In production, use proper state management
+_current_transcript: TranscriptData | None = None
 
 
 class RedactionRequest(BaseModel):
@@ -34,6 +35,115 @@ class RedactionRequest(BaseModel):
     end_time: float
     text: str
     reason: str
+
+
+@app.get("/", response_class=HTMLResponse)  # type: ignore
+async def serve_html() -> Response:
+    """Serve the main HTML template.
+
+    Returns:
+        HTML template for the timeline viewer
+    """
+    html_content = """
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Transcript Timeline</title>
+        <link href="/static/styles.css" rel="stylesheet">
+    </head>
+    <body>
+        <div id="root"></div>
+        <script src="/static/bundle.js"></script>
+    </body>
+    </html>
+    """
+    return HTMLResponse(content=html_content)
+
+
+@app.post("/api/transcript/load", response_model=dict[str, Any])  # type: ignore
+async def load_transcript_endpoint(transcript_data: TranscriptData) -> dict[str, Any]:
+    """Load transcript data into the UI.
+
+    Args:
+        transcript_data: List of transcript segments to load
+
+    Returns:
+        Dictionary containing operation status and segment count
+
+    Raises:
+        HTTPException: If transcript data is invalid
+    """
+    error_msg = "Empty transcript data"
+    if not transcript_data:
+        raise HTTPException(status_code=400, detail=error_msg)
+
+    global _current_transcript
+    _current_transcript = transcript_data
+    return {"status": "success", "segments": len(transcript_data)}
+
+
+@app.get("/api/transcript", response_model=TranscriptData)  # type: ignore
+async def get_transcript_endpoint() -> TranscriptData:
+    """Get the current transcript data.
+
+    Returns:
+        List of transcript segments
+
+    Raises:
+        HTTPException: If no transcript is loaded
+    """
+    error_msg = "No transcript loaded"
+    if _current_transcript is None:
+        raise HTTPException(status_code=404, detail=error_msg)
+    return _current_transcript
+
+
+@app.post("/api/redaction", response_model=dict[str, str])  # type: ignore
+async def add_redaction_endpoint(redaction: RedactionRequest) -> dict[str, str]:
+    """Add a new redaction zone to the transcript.
+
+    Args:
+        redaction: RedactionRequest object containing redaction details
+
+    Returns:
+        Dictionary containing operation status
+
+    Raises:
+        HTTPException: If no transcript is loaded or no matching segment found
+    """
+    transcript_error = "No transcript loaded"
+    if _current_transcript is None:
+        raise HTTPException(status_code=404, detail=transcript_error)
+
+    for segment in _current_transcript:
+        if (
+            segment["start"] <= redaction.start_time
+            and segment["end"] >= redaction.end_time
+        ):
+            if "redaction_zones" not in segment:
+                segment["redaction_zones"] = []
+            segment["redaction_zones"].append(
+                {
+                    "start_time": redaction.start_time,
+                    "end_time": redaction.end_time,
+                    "reason": redaction.reason,
+                    "redaction_type": "manual",
+                    "confidence": 1.0,
+                },
+            )
+            return {"status": "success"}
+
+    segment_error = "No matching segment found"
+    raise HTTPException(status_code=400, detail=segment_error)
+
+
+# Mount static files
+try:
+    app.mount("/static", StaticFiles(directory="static/dist"), name="static")
+except RuntimeError:
+    logger.warning("Static files directory not found at static/dist")
 
 
 class TimelineUI:
@@ -61,8 +171,19 @@ class TimelineUI:
 
         Returns:
             Dictionary containing status and segment count
+
+        Raises:
+            ValueError: If transcript data is invalid
         """
+        error_msg = "Empty transcript data"
+        if not transcript_data:
+            raise ValueError(error_msg)
+
+        # Update both instance and module state
         self.current_transcript = transcript_data
+        global _current_transcript
+        _current_transcript = transcript_data
+
         return {"status": "success", "segments": len(transcript_data)}
 
     async def get_transcript(self: "TimelineUI") -> TranscriptData:
@@ -72,11 +193,11 @@ class TimelineUI:
             List of transcript segments
 
         Raises:
-            HTTPException: If no transcript is loaded
+            ValueError: If no transcript is loaded
         """
-        if not self.current_transcript:
-            msg = "No transcript loaded"
-            raise HTTPException(status_code=404, detail=msg)
+        error_msg = "No transcript loaded"
+        if self.current_transcript is None:
+            raise ValueError(error_msg)
         return self.current_transcript
 
     async def add_redaction(
@@ -92,13 +213,12 @@ class TimelineUI:
             Dictionary containing operation status
 
         Raises:
-            HTTPException: If no transcript is loaded or no matching segment found
+            ValueError: If no transcript is loaded or no matching segment found
         """
-        if not self.current_transcript:
-            msg = "No transcript loaded"
-            raise HTTPException(status_code=404, detail=msg)
+        transcript_error = "No transcript loaded"
+        if self.current_transcript is None:
+            raise ValueError(transcript_error)
 
-        # Find the relevant segment
         for segment in self.current_transcript:
             if (
                 segment["start"] <= redaction.start_time
@@ -117,8 +237,8 @@ class TimelineUI:
                 )
                 return {"status": "success"}
 
-        msg = "No matching segment found"
-        raise HTTPException(status_code=400, detail=msg)
+        segment_error = "No matching segment found"
+        raise ValueError(segment_error)
 
     def save_transcript(self: "TimelineUI", output_path: Path) -> None:
         """Save the current transcript state to file.
@@ -131,9 +251,9 @@ class TimelineUI:
             OSError: If there are filesystem-related errors
             json.JSONDecodeError: If there are JSON serialization errors
         """
-        if not self.current_transcript:
-            msg = "No transcript loaded"
-            raise ValueError(msg)
+        error_msg = "No transcript loaded"
+        if self.current_transcript is None:
+            raise ValueError(error_msg)
 
         try:
             output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -155,37 +275,6 @@ class TimelineUI:
     def run(self: "TimelineUI") -> None:
         """Start the timeline UI server."""
         try:
-            app.post("/api/transcript/load")(self.load_transcript)
-            app.get("/api/transcript")(self.get_transcript)
-            app.post("/api/redaction")(self.add_redaction)
-
-            app.mount("/static", StaticFiles(directory="static"), name="static")
-
-            # Add type annotation for the decorator
-            @router.get("/{full_path:path}", response_class=HTMLResponse)  # type: ignore
-            async def serve_html(full_path: str) -> HTMLResponse:
-                """Serve the main HTML template."""
-                html_content = """
-                <!DOCTYPE html>
-                <html lang="en">
-                <head>
-                    <meta charset="UTF-8">
-                    <meta name="viewport" content="width=device-width,
-                     initial-scale=1.0">
-                    <title>Transcript Timeline</title>
-                    <link href="/static/styles.css" rel="stylesheet">
-                </head>
-                <body>
-                    <div id="root"></div>
-                    <script src="/static/bundle.js"></script>
-                </body>
-                </html>
-                """
-                return HTMLResponse(content=html_content)
-
-            app.include_router(router)
-
-            # Start the server
             logger.info(
                 "Starting Timeline UI server at http://%s:%s",
                 self.host,
@@ -194,10 +283,8 @@ class TimelineUI:
             import uvicorn
 
             uvicorn.run(app, host=self.host, port=self.port)
-
-        except Exception as e:  # Possibly narrower or # noqa: BLE001
+        except Exception as e:
             logger.error("Error starting Timeline UI server: %s", e)
-
             raise
 
     def __del__(self: "TimelineUI") -> None:

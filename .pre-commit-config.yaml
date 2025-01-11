@@ -1,18 +1,24 @@
 # File: .pre-commit-config.yaml
 repos:
 -   repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.3.0  # Match the version in environment.yml
+    rev: v0.3.0
     hooks:
     -   id: ruff
         args: [--fix]
     -   id: ruff-format
 -   repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.5.0  # More stable version
+    rev: v4.5.0
     hooks:
     -   id: trailing-whitespace
     -   id: end-of-file-fixer
     -   id: check-yaml
     -   id: check-added-large-files
+        args: ['--maxkb=10000']  # Increase limit to 10MB
+        exclude: |
+            (?x)^(
+                transcription_engine/static/node_modules/.*|
+                transcription_engine/static/dist/.*
+            )$
     -   id: debug-statements
 - repo: https://github.com/pre-commit/mirrors-mypy
   rev: v1.8.0
