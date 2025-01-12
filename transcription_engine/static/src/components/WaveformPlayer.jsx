@@ -14,15 +14,17 @@ const WaveformPlayer = ({ audioUrl, onTimeUpdate, currentTime, duration }) => {
     if (waveformRef.current) {
       wavesurfer.current = WaveSurfer.create({
         container: waveformRef.current,
-        waveColor: 'var(--primary)',
-        progressColor: 'var(--primary-foreground)',
-        cursorColor: 'var(--secondary)',
+        waveColor: 'hsl(var(--muted-foreground))',
+        progressColor: 'hsl(var(--primary))',
+        cursorColor: 'hsl(var(--primary))',
         barWidth: 2,
         barRadius: 3,
         responsive: true,
         height: 80,
         normalize: true,
-        backend: 'WebAudio'
+        backend: 'WebAudio',
+        barGap: 2,
+        minPxPerSec: 50
       });
 
       wavesurfer.current.load(audioUrl);

@@ -1,18 +1,31 @@
+// File: transcription_engine/static/src/components/TranscriptTimeline.jsx
+
 import React, { useState, useEffect } from 'react';
 import TranscriptSegment from './TranscriptSegment';
 import WaveformPlayer from './WaveformPlayer';
 import { Button } from './ui/button';
 import { Card, CardContent } from './ui/card';
-import { Download } from 'lucide-react';
+import { Download, Loader2 } from 'lucide-react';
+import { useInfiniteScroll } from '../hooks/useInfiniteScroll';
+
+const SEGMENTS_PER_PAGE = 15;
 
 const TranscriptTimeline = ({
   segments = [],
-  audioUrl,
   onUpdate,
+  audioUrl,
 }) => {
   const [localSegments, setLocalSegments] = useState(segments || []);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [error, setError] = useState(null);
+
+  const {
+    visibleItems: visibleSegments,
+    loading,
+    hasMore,
+    loaderRef,
+  } = useInfiniteScroll(localSegments, SEGMENTS_PER_PAGE);
 
   useEffect(() => {
     setLocalSegments(segments || []);
@@ -57,48 +70,75 @@ const TranscriptTimeline = ({
   };
 
   return (
-    <div className="space-y-6 w-full max-w-4xl mx-auto">
-      {audioUrl && (
-        <Card className="sticky top-4 z-10 bg-background shadow-md">
-          <CardContent className="p-4">
-            <WaveformPlayer
-              audioUrl={audioUrl}
-              onTimeUpdate={handleTimeUpdate}
-              currentTime={currentTime}
-              duration={duration}
-            />
+    <div className="min-h-screen bg-background py-8">
+      <div className="max-w-4xl mx-auto px-4 space-y-8">
+        {error && (
+          <div className="p-4 rounded-lg bg-destructive/10 text-destructive border border-destructive/20">
+            {error}
+          </div>
+        )}
+
+        <Card className="sticky top-4 z-10 shadow-md">
+          <CardContent className="p-6">
+            <div className="flex justify-between items-center mb-4">
+              <div className="text-sm font-medium text-muted-foreground">
+                {localSegments.length} segments
+              </div>
+              <div className="flex items-center space-x-4">
+                <Button onClick={handleDownload} variant="outline" size="sm">
+                  <Download className="mr-2 h-4 w-4" />
+                  Download JSON
+                </Button>
+              </div>
+            </div>
+
+            {audioUrl && (
+              <WaveformPlayer
+                audioUrl={audioUrl}
+                onTimeUpdate={handleTimeUpdate}
+                currentTime={currentTime}
+                duration={duration}
+              />
+            )}
           </CardContent>
         </Card>
-      )}
 
-      <div className="flex justify-between items-center">
-        <div className="text-sm text-muted-foreground">
-          {localSegments.length} segments
+        <div className="space-y-4">
+          {visibleSegments.map((segment, index) => (
+            <div
+              key={segment.start}
+              id={`segment-${segment.start}`}
+              className={`transition-all duration-200 ${
+                currentTime >= segment.start && currentTime <= segment.end
+                  ? 'scale-[1.02]'
+                  : ''
+              }`}
+            >
+              <TranscriptSegment
+                index={index}
+                segment={segment}
+                onSegmentUpdate={handleSegmentUpdate}
+              />
+            </div>
+          ))}
+
+          {/* Loading indicator */}
+          {(loading || hasMore) && (
+            <div
+              ref={loaderRef}
+              className="flex justify-center py-8"
+            >
+              {loading ? (
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>Loading more segments...</span>
+                </div>
+              ) : (
+                <div className="h-8" /> // Spacer for intersection observer
+              )}
+            </div>
+          )}
         </div>
-        <Button onClick={handleDownload} variant="outline" size="sm">
-          <Download className="mr-2 h-4 w-4" />
-          Download JSON
-        </Button>
-      </div>
-
-      <div className="space-y-4">
-        {localSegments.map((segment, index) => (
-          <div
-            key={segment.start}
-            id={`segment-${segment.start}`}
-            className={`transition-all duration-200 ${
-              currentTime >= segment.start && currentTime <= segment.end
-                ? 'scale-[1.02]'
-                : ''
-            }`}
-          >
-            <TranscriptSegment
-              index={index}
-              segment={segment}
-              onSegmentUpdate={handleSegmentUpdate}
-            />
-          </div>
-        ))}
       </div>
     </div>
   );
