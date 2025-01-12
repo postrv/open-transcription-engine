@@ -1,23 +1,23 @@
-// File: transcription_engine/static/src/components/TranscriptTimeline.jsx
 import React, { useState, useEffect } from 'react';
-import TranscriptSegment from './TranscriptSegment.jsx';
-import WaveformPlayer from './WaveformPlayer.jsx';
+import TranscriptSegment from './TranscriptSegment';
+import WaveformPlayer from './WaveformPlayer';
+import { Button } from './ui/button';
+import { Card, CardContent } from './ui/card';
+import { Download } from 'lucide-react';
 
 const TranscriptTimeline = ({
   segments = [],
   audioUrl,
-  onUpdate, // Optional callback from parent (if needed)
+  onUpdate,
 }) => {
   const [localSegments, setLocalSegments] = useState(segments || []);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
 
-  // Update localSegments when segments prop changes
   useEffect(() => {
     setLocalSegments(segments || []);
   }, [segments]);
 
-  // Update duration when segments change
   useEffect(() => {
     if (localSegments.length > 0) {
       const lastSegment = localSegments[localSegments.length - 1];
@@ -35,7 +35,6 @@ const TranscriptTimeline = ({
 
   const handleTimeUpdate = (time) => {
     setCurrentTime(time);
-    // Find and highlight current segment
     const currentSegment = localSegments.find(
       seg => time >= seg.start && time <= seg.end
     );
@@ -48,7 +47,6 @@ const TranscriptTimeline = ({
   };
 
   const handleDownload = () => {
-    // Simple JSON download
     const dataStr = `data:text/json;charset=utf-8,${encodeURIComponent(
       JSON.stringify(localSegments, null, 2)
     )}`;
@@ -59,29 +57,28 @@ const TranscriptTimeline = ({
   };
 
   return (
-    <div className="space-y-4 w-full max-w-4xl mx-auto">
-      {/* Audio player */}
+    <div className="space-y-6 w-full max-w-4xl mx-auto">
       {audioUrl && (
-        <div className="sticky top-0 z-10 bg-white p-4 shadow-md rounded-lg mb-8">
-          <WaveformPlayer
-            audioUrl={audioUrl}
-            onTimeUpdate={handleTimeUpdate}
-            currentTime={currentTime}
-            duration={duration}
-          />
-        </div>
+        <Card className="sticky top-4 z-10 bg-background shadow-md">
+          <CardContent className="p-4">
+            <WaveformPlayer
+              audioUrl={audioUrl}
+              onTimeUpdate={handleTimeUpdate}
+              currentTime={currentTime}
+              duration={duration}
+            />
+          </CardContent>
+        </Card>
       )}
 
-      <div className="flex justify-between mb-4">
-        <div className="text-sm text-gray-600">
+      <div className="flex justify-between items-center">
+        <div className="text-sm text-muted-foreground">
           {localSegments.length} segments
         </div>
-        <button
-          onClick={handleDownload}
-          className="text-sm px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-        >
+        <Button onClick={handleDownload} variant="outline" size="sm">
+          <Download className="mr-2 h-4 w-4" />
           Download JSON
-        </button>
+        </Button>
       </div>
 
       <div className="space-y-4">

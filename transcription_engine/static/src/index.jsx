@@ -1,7 +1,10 @@
-// File: transcription_engine/static/src/index.jsx
 import React, { useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
-import TranscriptTimeline from './components/TranscriptTimeline.jsx';
+import TranscriptTimeline from './components/TranscriptTimeline';
+import { ThemeProvider } from './components/ThemeProvider';
+import { Button } from './components/ui/button';
+import { Input } from './components/ui/input';
+import { MoonIcon, SunIcon } from 'lucide-react';
 import './styles/main.css';
 
 function App() {
@@ -9,6 +12,7 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [audioUrl, setAudioUrl] = useState(null);
+  const [theme, setTheme] = useState('light');
 
   useEffect(() => {
     const fetchTranscript = async () => {
@@ -62,6 +66,10 @@ function App() {
     }
   };
 
+  const toggleTheme = () => {
+    setTheme(prevTheme => prevTheme === 'light' ? 'dark' : 'light');
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -81,29 +89,45 @@ function App() {
   }
 
   return (
-    <div className="p-4">
-      <div className="mb-6">
-        <input
-          type="file"
-          accept="audio/*"
-          onChange={handleAudioUpload}
-          className="block w-full text-sm text-gray-500
-            file:mr-4 file:py-2 file:px-4
-            file:rounded-full file:border-0
-            file:text-sm file:font-semibold
-            file:bg-blue-50 file:text-blue-700
-            hover:file:bg-blue-100"
-        />
-      </div>
+    <ThemeProvider defaultTheme="light" storageKey="vite-ui-theme">
+      <div className={`min-h-screen bg-background text-foreground ${theme}`}>
+        <header className="border-b">
+          <div className="container mx-auto px-4 py-4 flex justify-between items-center">
+            <h1 className="text-2xl font-bold">Transcription Engine</h1>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggleTheme}
+            >
+              {theme === 'light' ? (
+                <MoonIcon className="h-[1.2rem] w-[1.2rem]" />
+              ) : (
+                <SunIcon className="h-[1.2rem] w-[1.2rem]" />
+              )}
+              <span className="sr-only">Toggle theme</span>
+            </Button>
+          </div>
+        </header>
+        <main className="container mx-auto px-4 py-8">
+          <div className="mb-6">
+            <Input
+              type="file"
+              accept="audio/*"
+              onChange={handleAudioUpload}
+              className="cursor-pointer"
+            />
+          </div>
 
-      {segments.length === 0 ? (
-        <div className="text-center text-gray-500 mt-8">
-          No transcript segments found. Process an audio file to begin.
-        </div>
-      ) : (
-        <TranscriptTimeline segments={segments} audioUrl={audioUrl} />
-      )}
-    </div>
+          {segments.length === 0 ? (
+            <div className="text-center text-muted-foreground mt-8">
+              No transcript segments found. Process an audio file to begin.
+            </div>
+          ) : (
+            <TranscriptTimeline segments={segments} audioUrl={audioUrl} />
+          )}
+        </main>
+      </div>
+    </ThemeProvider>
   );
 }
 

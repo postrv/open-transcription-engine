@@ -1,17 +1,15 @@
-// File: transcription_engine/static/src/components/TranscriptSegment.jsx
 import React, { useState } from "react";
-import { Card } from "./ui/card.jsx";
-import { cn } from "../lib/utils.js";
+import { Card, CardContent, CardFooter } from "./ui/card";
+import { Button } from "./ui/button";
+import { Input } from "./ui/input";
+import { Textarea } from "./ui/textarea";
+import { Edit, Save, X } from 'lucide-react';
 
-/**
- * Single segment in the transcript timeline
- */
 const TranscriptSegment = ({
   segment,
   onSegmentUpdate,
   index,
 }) => {
-  // Local states for editing
   const [isEditing, setIsEditing] = useState(false);
   const [draftText, setDraftText] = useState(segment.text);
   const [draftSpeaker, setDraftSpeaker] = useState(segment.speaker_id || "");
@@ -32,74 +30,76 @@ const TranscriptSegment = ({
   };
 
   return (
-    <Card className="p-4 bg-white shadow-sm hover:shadow-md transition-shadow">
-      <div className="flex justify-between items-start">
-        <div className="text-sm text-gray-500">
-          {`${segment.start.toFixed(2)}s - ${segment.end.toFixed(2)}s`}
+    <Card>
+      <CardContent className="p-4">
+        <div className="flex justify-between items-start mb-2">
+          <div className="text-sm text-muted-foreground">
+            {`${segment.start.toFixed(2)}s - ${segment.end.toFixed(2)}s`}
+          </div>
+          {isEditing ? (
+            <Input
+              type="text"
+              value={draftSpeaker}
+              onChange={(e) => setDraftSpeaker(e.target.value)}
+              className="w-40"
+              placeholder="Speaker"
+            />
+          ) : (
+            segment.speaker_id && (
+              <div className="text-sm font-medium text-primary">
+                {segment.speaker_id}
+              </div>
+            )
+          )}
         </div>
         {isEditing ? (
-          <input
-            type="text"
-            value={draftSpeaker}
-            onChange={(e) => setDraftSpeaker(e.target.value)}
-            className={cn(
-              "border text-sm px-2 py-1 rounded",
-              "focus:outline-none focus:ring-1 focus:ring-blue-300"
-            )}
-            placeholder="Speaker"
+          <Textarea
+            className="mt-2"
+            value={draftText}
+            onChange={(e) => setDraftText(e.target.value)}
+            rows={4}
           />
         ) : (
-          segment.speaker_id && (
-            <div className="text-sm font-medium text-blue-600">
-              {segment.speaker_id}
-            </div>
-          )
+          <div className="mt-2">{segment.text}</div>
         )}
-      </div>
-      {isEditing ? (
-        <textarea
-          className={cn(
-            "mt-2 text-gray-900 w-full border rounded",
-            "focus:outline-none focus:ring-1 focus:ring-blue-300"
-          )}
-          value={draftText}
-          onChange={(e) => setDraftText(e.target.value)}
-          rows={4}
-        />
-      ) : (
-        <div className="mt-2 text-gray-900">{segment.text}</div>
-      )}
-      {segment.confidence && (
-        <div className="mt-1 text-xs text-gray-400">
-          Confidence: {(segment.confidence * 100).toFixed(1)}%
-        </div>
-      )}
-      {/* Action buttons */}
-      <div className="mt-3 flex space-x-2">
+        {segment.confidence && (
+          <div className="mt-1 text-xs text-muted-foreground">
+            Confidence: {(segment.confidence * 100).toFixed(1)}%
+          </div>
+        )}
+      </CardContent>
+      <CardFooter className="px-4 py-2 bg-muted/50">
         {!isEditing ? (
-          <button
+          <Button
             onClick={() => setIsEditing(true)}
-            className="text-sm px-3 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
+            variant="ghost"
+            size="sm"
           >
+            <Edit className="mr-2 h-4 w-4" />
             Edit
-          </button>
+          </Button>
         ) : (
           <>
-            <button
+            <Button
               onClick={handleSave}
-              className="text-sm px-3 py-1 bg-green-100 text-green-700 rounded hover:bg-green-200"
+              variant="default"
+              size="sm"
+              className="mr-2"
             >
+              <Save className="mr-2 h-4 w-4" />
               Save
-            </button>
-            <button
+            </Button>
+            <Button
               onClick={handleCancel}
-              className="text-sm px-3 py-1 bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
+              variant="ghost"
+              size="sm"
             >
+              <X className="mr-2 h-4 w-4" />
               Cancel
-            </button>
+            </Button>
           </>
         )}
-      </div>
+      </CardFooter>
     </Card>
   );
 };

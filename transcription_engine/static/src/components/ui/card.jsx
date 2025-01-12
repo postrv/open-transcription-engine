@@ -1,6 +1,6 @@
 // File: transcription_engine/static/src/components/ui/card.jsx
 import * as React from "react"
-import { cn } from "../../lib/utils.js"
+import { cn } from "@/lib/utils.js"
 
 const Card = React.forwardRef(({ className, ...props }, ref) => (
   <div
