@@ -1,34 +1,52 @@
+// File: transcription_engine/static/src/components/ProcessingStatus.jsx
 import React, { useEffect, useState, useCallback } from 'react';
 import { AlertCircle, CheckCircle2, Loader2, RefreshCcw } from 'lucide-react';
 import { Progress } from './ui/progress';
 import { Card, CardContent } from './ui/card';
 import { Button } from './ui/button';
+import { cn } from '@/lib/utils';
 
 const MAX_RETRIES = 3;
 const RETRY_DELAY = 2000;
 
 const ProcessingStatus = ({ jobId, onComplete }) => {
-  const [status, setStatus] = useState('connecting');
+  // Start with 'initial' status to prevent premature reconnections
+  const [status, setStatus] = useState('initial');
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState(null);
   const [outputPath, setOutputPath] = useState(null);
   const [retryCount, setRetryCount] = useState(0);
   const [ws, setWs] = useState(null);
+  const [shouldConnect, setShouldConnect] = useState(true);
+
+  const getWebSocketUrl = useCallback(() => {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = window.location.host;
+    return `${protocol}//${host}/ws/jobs/${jobId}`;
+  }, [jobId]);
 
   const connect = useCallback(() => {
-    if (!jobId) return;
+    if (!jobId || !shouldConnect) return () => {};
 
-    const socket = new WebSocket(`ws://${window.location.host}/ws/jobs/${jobId}`);
+    // Close existing connection if any
+    if (ws) {
+      ws.close();
+    }
+
+    const socket = new WebSocket(getWebSocketUrl());
+    let reconnectTimeout;
 
     socket.onopen = () => {
+      console.log('WebSocket connected');
       setStatus('connected');
       setError(null);
-      setRetryCount(0);
+      setRetryCount(0); // Reset retry count on successful connection
     };
 
     socket.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
+        console.log('Received message:', data);
 
         if (data.type === 'processing_update') {
           setStatus(data.data.status);
@@ -42,6 +60,12 @@ const ProcessingStatus = ({ jobId, onComplete }) => {
             setOutputPath(data.data.output_path);
             onComplete?.(data.data.output_path);
           }
+
+          // Stop reconnection attempts if processing is complete or failed
+          if (['completed', 'failed'].includes(data.data.status)) {
+            setShouldConnect(false);
+            socket.close(1000, 'Processing finished');
+          }
         }
       } catch (err) {
         console.error('Error parsing WebSocket message:', err);
@@ -51,37 +75,64 @@ const ProcessingStatus = ({ jobId, onComplete }) => {
 
     socket.onerror = (error) => {
       console.error('WebSocket error:', error);
-      setError('Connection error');
+      // Don't set error immediately, let the onclose handler manage reconnection
       setStatus('error');
+
+      // Only show error if we're not attempting to reconnect
+      if (retryCount >= MAX_RETRIES) {
+        setError('Connection failed after multiple attempts. Please reload the page.');
+      }
     };
 
-    socket.onclose = () => {
-      setStatus('disconnected');
+    socket.onclose = (event) => {
+      console.log('WebSocket closed:', event.code, event.reason);
 
-      // Attempt retry if not completed/failed
-      if (status !== 'completed' && status !== 'failed' && retryCount < MAX_RETRIES) {
-        setTimeout(() => {
-          setRetryCount(prev => prev + 1);
+      // Don't reconnect for completed jobs or clean closes
+      if (event.reason === 'Job already completed' || status === 'completed' || status === 'failed') {
+        setShouldConnect(false);
+        return;
+      }
+
+      // Don't try to reconnect if we closed intentionally
+      if (!event.wasClean && shouldConnect && retryCount < MAX_RETRIES) {
+        setStatus('disconnected');
+        const nextRetry = retryCount + 1;
+        setRetryCount(nextRetry);
+
+        if (nextRetry >= MAX_RETRIES) {
+          setShouldConnect(false);
+          setError('Max retry attempts reached');
+          return;
+        }
+
+        // Set up reconnection with exponential backoff
+        const delay = RETRY_DELAY * Math.pow(2, retryCount);
+        reconnectTimeout = setTimeout(() => {
           connect();
-        }, RETRY_DELAY);
+        }, delay);
       }
     };
 
     setWs(socket);
 
+    // Cleanup function
     return () => {
-      socket.close();
+      clearTimeout(reconnectTimeout);
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.close(1000, 'Component unmounting');
+      }
     };
-  }, [jobId, status, retryCount, onComplete]);
+  }, [jobId, retryCount, ws, getWebSocketUrl, onComplete, shouldConnect]);
 
   useEffect(() => {
     const cleanup = connect();
-    return () => cleanup?.();
+    return () => cleanup();
   }, [connect]);
 
   const handleRetry = () => {
     setRetryCount(0);
     setError(null);
+    setShouldConnect(true);
     connect();
   };
 
@@ -132,7 +183,7 @@ const ProcessingStatus = ({ jobId, onComplete }) => {
               {error && (
                 <div className="text-sm text-destructive mt-1">
                   {error}
-                  {retryCount > 0 && (
+                  {retryCount > 0 && shouldConnect && (
                     <span className="text-muted-foreground ml-2">
                       (Attempt {retryCount}/{MAX_RETRIES})
                     </span>
@@ -141,7 +192,7 @@ const ProcessingStatus = ({ jobId, onComplete }) => {
               )}
             </div>
 
-            {(status === 'error' || status === 'disconnected') && (
+            {(status === 'error' || status === 'disconnected') && shouldConnect && (
               <Button
                 variant="outline"
                 size="sm"

@@ -111,10 +111,44 @@ const AudioUpload = ({ onUploadComplete }) => {
     }
   };
 
-  const handleProcessingComplete = useCallback((outputPath) => {
-    // Handle completion - could trigger transcript reload
-    console.log('Processing complete:', outputPath);
-  }, []);
+  // Remove the logger import entirely and modify the handler:
+const handleProcessingComplete = useCallback(async (outputPath) => {
+    if (!outputPath) {
+      console.error('No output path received');
+      return;
+    }
+
+    try {
+      // Extract job ID from output path
+      const jobId = outputPath.split('/').pop().split('.')[0];
+
+      // Add delay to ensure file is written
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // Fetch the transcript for this specific job
+      const response = await fetch(`/api/transcript/${jobId}`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch transcript: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      console.log(`Loaded transcript for job ${jobId} with ${data.length} segments`);
+
+      // Trigger parent component update with memoized value
+      onUploadComplete?.(
+        state.file ? URL.createObjectURL(state.file) : null,
+        jobId,
+        data
+      );
+
+    } catch (error) {
+      console.error('Error loading transcript:', error);
+      setState(prev => ({
+        ...prev,
+        error: `Failed to load transcript: ${error.message}`
+      }));
+    }
+}, [state.file, onUploadComplete]);
 
   const { isUploading, error, dragActive, jobId, file } = state;
 

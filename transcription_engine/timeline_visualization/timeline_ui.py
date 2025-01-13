@@ -19,6 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from ..processing.background_processor import BackgroundProcessor
+from ..utils.config import config_manager
 from .websocket_manager import websocket_manager
 
 # Configure logging
@@ -101,7 +102,58 @@ async def load_transcript_endpoint(transcript_data: TranscriptData) -> dict[str,
     return {"status": "success", "segments": len(transcript_data)}
 
 
-@app.get("/api/transcript", response_model=list[dict[str, Any]])  # type: ignore
+@app.get("/api/transcript/{job_id}", response_model=list[dict[str, Any]])  # type: ignore
+async def get_job_transcript_endpoint(job_id: str) -> list[dict[str, Any]]:
+    """Get transcript data for a specific job.
+
+    Args:
+        job_id: ID of the job to fetch transcript for
+
+    Returns:
+        List of transcript segments
+
+    Raises:
+        HTTPException: If transcript file cannot be read or parsed
+    """
+    try:
+        # Clean the job_id to remove any .json extension
+        job_id = job_id.replace(".json", "")
+
+        # Look for specific job's transcript
+        config = config_manager.load_config()
+        transcript_file = config.output_dir / f"{job_id}.json"
+
+        if not transcript_file.exists():
+            logger.error("Transcript file not found: %s", transcript_file)
+            raise HTTPException(
+                status_code=404, detail=f"Transcript not found for job {job_id}"
+            )
+
+        try:
+            with open(transcript_file) as f:
+                data: dict[str, Any] = json.load(f)
+                segments: list[dict[str, Any]] = data.get("segments", [])
+                logger.info("Successfully loaded transcript for job %s", job_id)
+                return segments
+        except (json.JSONDecodeError, KeyError) as e:
+            logger.error("Failed to parse transcript file: %s", e)
+            raise HTTPException(
+                status_code=500, detail=f"Failed to parse transcript file: {str(e)}"
+            ) from e
+
+    except OSError as e:
+        logger.error("Error accessing transcript file: %s", e)
+        raise HTTPException(
+            status_code=500, detail=f"Error accessing transcript file: {str(e)}"
+        ) from e
+    except Exception as general_exception:  # noqa: BLE001
+        logger.error("Unexpected error loading transcript: %s", general_exception)
+        raise HTTPException(
+            status_code=500, detail="Internal server error while loading transcript"
+        ) from general_exception
+
+
+@app.get("/api/transcript", response_model=list[dict[str, Any]])  # type: ignore[misc]
 async def get_transcript_endpoint() -> list[dict[str, Any]]:
     """Get the current transcript data.
 
@@ -111,35 +163,9 @@ async def get_transcript_endpoint() -> list[dict[str, Any]]:
     Raises:
         HTTPException: If transcript file cannot be read or parsed
     """
-    try:
-        # Look for redacted transcript in output directory
-        output_dir = Path("output")
-        transcript_files = list(output_dir.glob("*_redacted.json"))
-
-        if not transcript_files:
-            return []
-
-        # Use the most recent transcript file
-        latest_transcript = max(transcript_files, key=lambda p: p.stat().st_mtime)
-
-        try:
-            with open(latest_transcript) as f:
-                data: dict[str, Any] = json.load(f)
-                segments: list[dict[str, Any]] = data.get("segments", [])
-                return segments
-        except (json.JSONDecodeError, KeyError) as e:
-            logger.error("Failed to parse transcript file: %s", e)
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to parse transcript file: {str(e)}",
-            ) from e
-
-    except OSError as e:
-        logger.error("Failed to read transcript files: %s", e)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to read transcript files: {str(e)}",
-        ) from e
+    if _current_transcript is None:
+        return []
+    return _current_transcript
 
 
 @app.post("/api/redaction", response_model=dict[str, str])  # type: ignore

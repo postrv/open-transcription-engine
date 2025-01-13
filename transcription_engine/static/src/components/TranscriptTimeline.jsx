@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import TranscriptSegment from './TranscriptSegment';
 import WaveformPlayer from './WaveformPlayer';
+import SpeakerManager from './SpeakerManager';
 import { Button } from './ui/button';
 import { Card, CardContent } from './ui/card';
 import { Download, Loader2 } from 'lucide-react';

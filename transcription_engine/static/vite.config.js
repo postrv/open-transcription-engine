@@ -27,16 +27,42 @@ export default defineConfig({
   },
   server: {
     proxy: {
-        '/api': {
-            target: 'http://localhost:8000',
-            changeOrigin: true,
-            secure: false
-        },
-        '/uploads': {  // Changed from /static/uploads to /uploads
-            target: 'http://localhost:8000',
-            changeOrigin: true,
-            secure: false
+      '/api': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+        secure: false,
+        configure: (proxy, options) => {
+          proxy.on('error', (err, req, res) => {
+            console.log('proxy error', err);
+          });
+          proxy.on('proxyReq', (proxyReq, req, res) => {
+            console.log('Sending Request:', req.method, req.url);
+          });
+          proxy.on('proxyRes', (proxyRes, req, res) => {
+            console.log('Received Response:', proxyRes.statusCode, req.url);
+          });
         }
+      },
+      '^/ws/.*': {
+        target: 'ws://localhost:8000',
+        ws: true,
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path,
+        configure: (proxy, options) => {
+          proxy.on('error', (err) => {
+            console.log('WebSocket proxy error:', err);
+          });
+        }
+      },
+      '/uploads': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+        secure: false
+      }
+    },
+    hmr: {
+      host: 'localhost'
     }
   }
 });

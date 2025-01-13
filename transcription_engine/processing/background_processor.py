@@ -265,18 +265,34 @@ class BackgroundProcessor:
 
             # Speaker diarization if enabled
             if self.diarizer and self.config.diarization.enabled:
-                job.status = ProcessingStatus.IDENTIFYING_SPEAKERS
-                job.progress = 60.0
+                try:
+                    job.status = ProcessingStatus.IDENTIFYING_SPEAKERS
+                    job.progress = 60.0
 
-                diarization_segments = self.diarizer.process_singlechannel(
-                    audio_data,
-                    sample_rate,
-                )
-                segments = self.diarizer.assign_speaker_ids(
-                    segments,
-                    diarization_segments,
-                )
-                job.progress = 90.0
+                    logger.info("Starting speaker diarization")
+                    diarization_segments = self.diarizer.process_singlechannel(
+                        audio_data,
+                        sample_rate,
+                    )
+
+                    if not diarization_segments:
+                        logger.warning("No speaker segments detected")
+                        job.progress = 90.0
+                    else:
+                        logger.info(
+                            "Found %d speaker segments, assigning IDs",
+                            len(diarization_segments),
+                        )
+                        segments = self.diarizer.assign_speaker_ids(
+                            segments,
+                            diarization_segments,
+                        )
+                        job.progress = 90.0
+                        logger.info("Speaker ID assignment complete")
+                except (RuntimeError, ValueError) as e:
+                    logger.error("Speaker diarization failed: %s", e)
+                    # Continue with un-diarized segments rather than failing
+                    job.progress = 90.0
 
             # Save output
             if job.output_path:
