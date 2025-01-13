@@ -1,14 +1,9 @@
 # File: transcription_engine/speaker_id/diarizer.py
-# transcription_engine/speaker_id/diarizer.py
-"""Speaker diarization module for the Open Transcription Engine.
+"""Manages speaker diarization processes."""
 
-Provides functionality for identifying and separating different speakers
-in audio recordings, supporting both multi-channel and single-channel inputs.
-"""
-
-# Use importlib.util to check for pyannote availability
 import importlib.util
 import logging
+import os
 from dataclasses import dataclass
 from typing import TypeVar
 
@@ -16,15 +11,14 @@ import numpy as np
 import torch
 from numpy.typing import NDArray
 
-# Move these up before other imports
 from ..utils.config import DiarizationConfig, config_manager
 from ..whisper_engine.transcriber import TranscriptionSegment
 
+# Move these up before other imports
 PYANNOTE_AVAILABLE = importlib.util.find_spec("pyannote") is not None
 
 if PYANNOTE_AVAILABLE:
     from pyannote.audio import Pipeline
-    # Remove the unused imports
 else:
     Pipeline = None
 
@@ -55,15 +49,94 @@ class DiarizationManager:
         Args:
             config: Optional DiarizationConfig instance
         """
-        self.auth_token = None
+        self.auth_token: str | None = None
         self.config = config or config_manager.load_config().diarization
-        self.pipeline: Pipeline | None = None
+        self.pipeline: "Pipeline" | None = None
         self.device = self._setup_device()
         self.use_pyannote = self.config.use_pyannote
 
         # Initialize pipeline if using pyannote
         if self.use_pyannote:
             self._load_pyannote()
+
+    def _load_pyannote(self: T) -> bool:
+        """Load the PyAnnote pipeline.
+
+        Returns:
+            bool: True if pipeline loaded successfully, False otherwise
+        """
+        if not PYANNOTE_AVAILABLE:
+            logger.warning("PyAnnote not available - please install pyannote.audio")
+            return False
+
+        if self.pipeline is not None:
+            # Already loaded
+            return True
+
+        try:
+            # Check auth token
+            if not self.auth_token:
+                auth_token = os.getenv("HUGGINGFACE_TOKEN") or os.getenv("HF_TOKEN")
+                if auth_token:
+                    self.auth_token = auth_token
+                    logger.info("Using HuggingFace token from environment")
+                else:
+                    msg = (
+                        "PyAnnote requires a HuggingFace auth token. "
+                        "Please set HUGGINGFACE_TOKEN in .env or auth_token in config"
+                    )
+                    raise ValueError(msg)
+
+            logger.info("Loading PyAnnote pipeline with device: %s", self.device)
+
+            if Pipeline is None:
+                msg = "PyAnnote Pipeline is not available"
+                raise ImportError(msg)
+
+            # Create the pipeline first
+            try:
+                pipeline_obj = Pipeline.from_pretrained(
+                    "pyannote/speaker-diarization", use_auth_token=self.auth_token
+                )
+            except RuntimeError as e:
+                msg = (
+                    "Failed to create PyAnnote pipeline. "
+                    f"Error: {str(e)}. Please verify model access at "
+                    "https://huggingface.co/pyannote/speaker-diarization"
+                )
+                logger.error(msg)
+                raise ValueError(msg) from e
+
+            # Handle version warnings
+            logger.warning(
+                "Note: Running PyAnnote 3.x with newer PyTorch version. "
+                "This is expected and should work despite version warnings."
+            )
+
+            if pipeline_obj is None:
+                msg = (
+                    "Failed to initialize PyAnnote pipeline. Please verify access to "
+                    "both 'pyannote/speaker-diarization' & 'pyannote/segmentation' at "
+                    "https://huggingface.co/pyannote/"
+                )
+                raise ValueError(msg)
+
+            # Move to device after creation
+            try:
+                pipeline_obj = pipeline_obj.to(self.device)
+                self.pipeline = pipeline_obj
+            except (RuntimeError, ValueError, ImportError, AttributeError) as e:
+                msg = f"Failed to move pipeline to device {self.device}: {str(e)}"
+                logger.error(msg)
+                raise RuntimeError(msg) from e
+
+            logger.info("PyAnnote pipeline loaded successfully")
+            return True
+
+        except (ImportError, RuntimeError, ValueError, AttributeError) as e:
+            logger.error("Error loading PyAnnote: %s", e)
+            self.pipeline = None
+            return False
 
     def _setup_device(self: T) -> torch.device:
         """Configure the computation device based on availability and config."""
@@ -105,41 +178,6 @@ class DiarizationManager:
                 e,
             )
             return torch.device("cpu")
-
-    def _load_pyannote(self: "DiarizationManager") -> bool:
-        """Load the PyAnnote pipeline."""
-        if not PYANNOTE_AVAILABLE:
-            logger.warning("PyAnnote not available.")
-            return False
-
-        if self.pipeline is not None:
-            # Already loaded
-            return True
-
-        try:
-            if not self.auth_token:
-                msg = (
-                    "PyAnnote requires a HuggingFace auth token. "
-                    "Please set auth_token in the configuration."
-                )
-                raise ValueError(msg)
-
-            pipeline_obj = Pipeline.from_pretrained(
-                "pyannote/speaker-diarization",
-                use_auth_token=self.auth_token,
-            )
-
-            pipeline_obj = pipeline_obj.to(self.device)
-            self.pipeline = pipeline_obj
-
-            logger.info("PyAnnote pipeline loaded successfully")
-            return True
-
-        except (ImportError, ValueError, RuntimeError) as e:
-            # Catch narrower exceptions
-            logger.error("Failed to load PyAnnote pipeline: %s", e)
-            self.pipeline = None
-            return False
 
     def process_multichannel(
         self: "DiarizationManager",

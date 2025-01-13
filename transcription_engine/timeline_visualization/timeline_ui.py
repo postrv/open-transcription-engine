@@ -10,18 +10,23 @@ import shutil
 import time
 from pathlib import Path
 from typing import Annotated, Any
+from uuid import UUID
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from ..processing.background_processor import BackgroundProcessor
+from .websocket_manager import websocket_manager
+
 # Configure logging
 logger = logging.getLogger(__name__)
 
-# Initialize FastAPI app
+# Initialize FastAPI app and processing components
 app = FastAPI(title="Transcript Timeline Viewer")
+background_processor = BackgroundProcessor()
 
 # Add CORS middleware
 app.add_middleware(
@@ -195,18 +200,55 @@ except RuntimeError as e:
     logger.warning("Static files directory not found: %s", e)
 
 
+@app.websocket("/ws/jobs/{job_id}")  # type: ignore
+async def websocket_job_endpoint(websocket: WebSocket, job_id: str) -> None:
+    """WebSocket endpoint for job status updates.
+
+    Args:
+        websocket: WebSocket connection
+        job_id: UUID of the job to watch
+    """
+    try:
+        job_uuid = UUID(job_id)
+        # Verify job exists (will raise KeyError if not found)
+        await background_processor.get_job_status(job_uuid)
+        update_generator = background_processor.watch_job(job_uuid)
+        await websocket_manager.handle_job_updates(
+            websocket,
+            job_uuid,
+            update_generator,
+        )
+    except ValueError:
+        await websocket.close(code=4000, reason="Invalid job ID")
+    except KeyError:
+        await websocket.close(code=4004, reason="Job not found")
+
+
+# Add startup and shutdown events for background processor
+@app.on_event("startup")  # type: ignore
+async def startup_event() -> None:
+    """Start background processor on server startup."""
+    await background_processor.start()
+
+
+@app.on_event("shutdown")  # type: ignore
+async def shutdown_event() -> None:
+    """Stop background processor on server shutdown."""
+    await background_processor.stop()
+
+
 @app.post("/api/upload-audio")  # type: ignore
-async def upload_audio(file: Annotated[UploadFile, File()]) -> dict[str, str]:
-    """Handle audio file upload.
+async def upload_audio(file: Annotated[UploadFile, File()]) -> dict[str, Any]:
+    """Handle audio file upload and start processing.
 
     Args:
         file: Uploaded audio file
 
     Returns:
-        Dictionary containing the URL of the uploaded file
+        Dictionary containing job ID and file URL
 
     Raises:
-        HTTPException: If there's an error during file upload
+        HTTPException: If there's an error during upload or processing
     """
     try:
         # Create uploads directory if it doesn't exist
@@ -221,10 +263,15 @@ async def upload_audio(file: Annotated[UploadFile, File()]) -> dict[str, str]:
         with file_path.open("wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
-        # Return URL for frontend
+        # Submit processing job
+        job = await background_processor.submit_job(file_path)
+
+        # Return both the job ID and file URL
         return {
-            "url": f"/uploads/{safe_filename}"
-        }  # Keep this as /uploads to match mount point
+            "job_id": str(job.id),
+            "url": f"/uploads/{safe_filename}",
+            "status": job.status,
+        }
 
     except (OSError, ValueError) as e:
         logger.error("Error uploading audio: %s", e)

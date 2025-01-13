@@ -11,8 +11,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TypeVar
 
+import dotenv
 import torch
 import yaml
+
+# Load environment variables from .env file
+dotenv.load_dotenv()
 
 # Configure logging
 logging.basicConfig(
@@ -200,10 +204,19 @@ class ConfigurationManager:
         diarization_config = DiarizationConfig(
             **{
                 **config_dict["diarization"],
-                "auth_token": os.getenv("HUGGINGFACE_TOKEN")
+                "auth_token": os.getenv("HUGGINGFACE_TOKEN", None)
+                or os.getenv("HF_TOKEN", None)
                 or config_dict["diarization"].get("auth_token"),
             }
         )
+
+        # Log configuration of auth token
+        if diarization_config.auth_token:
+            logger.info("HuggingFace authentication token configured")
+        else:
+            logger.warning(
+                "No HuggingFace authentication token found in environment or config"
+            )
 
         return SystemConfig(
             whisper=whisper_config,
