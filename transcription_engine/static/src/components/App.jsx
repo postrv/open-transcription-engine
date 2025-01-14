@@ -1,5 +1,5 @@
 // File: transcription_engine/static/src/components/App.jsx
-import React, { useState, useEffect, Component } from 'react';
+import React, { useState, useEffect, useCallback, Component } from 'react';
 import TranscriptTimeline from './TranscriptTimeline';
 import { ThemeProvider, useTheme } from './ThemeProvider';
 import AudioUpload from './AudioUpload';
@@ -37,14 +37,16 @@ function AppContent() {
     fetchTranscript();
   }, []);
 
-  const handleUploadComplete = (url, jobId, transcriptData) => {
-    setAudioUrl(url);
-    if (transcriptData && Array.isArray(transcriptData)) {
-      setSegments(transcriptData);
-      setLoading(false);
-      setError(null);
-    }
-  };
+  const [jobId, setJobId] = useState(null);
+
+  const handleUploadComplete = useCallback((url, newJobId, transcriptData) => {
+  console.log('Upload complete:', { url, jobId: newJobId, transcriptData });
+  setAudioUrl(url);
+  setJobId(newJobId);
+  if (transcriptData && Array.isArray(transcriptData)) {
+    setSegments(transcriptData);
+  }
+}, [setSegments]);
 
   const toggleTheme = () => {
     setTheme(theme === 'light' ? 'dark' : 'light');
@@ -119,6 +121,7 @@ function AppContent() {
                 segments={segments}
                 audioUrl={audioUrl}
                 onUpdate={setSegments}
+                jobId={jobId}
               />
             )}
           </>

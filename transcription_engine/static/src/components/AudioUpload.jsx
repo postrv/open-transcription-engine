@@ -131,15 +131,18 @@ const handleProcessingComplete = useCallback(async (outputPath) => {
         throw new Error(`Failed to fetch transcript: ${response.statusText}`);
       }
 
-      const data = await response.json();
-      console.log(`Loaded transcript for job ${jobId} with ${data.length} segments`);
+      const rawData = await response.json();
+      // Handle both possible response formats
+      const data = Array.isArray(rawData) ? rawData : rawData.segments || [];
 
-      // Trigger parent component update with memoized value
-      onUploadComplete?.(
-        state.file ? URL.createObjectURL(state.file) : null,
-        jobId,
-        data
-      );
+      console.log(`Loaded transcript for job ${jobId} with ${data.length} segments:`, data);
+
+      // Create audio URL only if we have a file
+      const audioUrl = state.file ? URL.createObjectURL(state.file) : null;
+      console.log('Created audio URL:', audioUrl);
+
+      // Trigger parent component update with all necessary data
+      onUploadComplete?.(audioUrl, jobId, data);
 
     } catch (error) {
       console.error('Error loading transcript:', error);
@@ -148,7 +151,7 @@ const handleProcessingComplete = useCallback(async (outputPath) => {
         error: `Failed to load transcript: ${error.message}`
       }));
     }
-}, [state.file, onUploadComplete]);
+}, [state.file, onUploadComplete, setState]);
 
   const { isUploading, error, dragActive, jobId, file } = state;
 
