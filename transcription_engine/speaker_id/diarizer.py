@@ -376,7 +376,7 @@ class DiarizationManager:
 
             # Create pipeline with optimized parameters
             try:
-                model_name = "pyannote/speaker-diarization"
+                model_name = "pyannote/speaker-diarization-3.1"
                 pipeline_obj = Pipeline.from_pretrained(
                     model_name, use_auth_token=self.auth_token
                 )
