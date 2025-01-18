@@ -4,7 +4,16 @@ import { Card, CardContent, CardFooter } from "./ui/card";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
-import { Edit, Save, X, Clock, User, AlertTriangle } from 'lucide-react';
+import {
+  Edit,
+  Save,
+  X,
+  Clock,
+  User,
+  AlertTriangle,
+  Users,
+  Volume2
+} from 'lucide-react';
 
 const TranscriptSegment = ({
   segment,
@@ -34,6 +43,27 @@ const TranscriptSegment = ({
     if (confidence >= 0.9) return 'bg-green-500';
     if (confidence >= 0.7) return 'bg-yellow-500';
     return 'bg-red-500';
+  };
+
+  // Helper to render diarization badges
+  const renderDiarizationBadges = () => {
+    const { diarization_data = {} } = segment;
+    return (
+      <div className="flex gap-2 items-center text-xs">
+        {diarization_data.overlap_detected && (
+          <div className="flex items-center gap-1 px-2 py-1 rounded-md bg-yellow-100 text-yellow-800">
+            <Users className="h-3 w-3" />
+            <span>Overlap</span>
+          </div>
+        )}
+        {diarization_data.energy_score > 0 && (
+          <div className="flex items-center gap-1 px-2 py-1 rounded-md bg-blue-100 text-blue-800">
+            <Volume2 className="h-3 w-3" />
+            <span>{Math.round(diarization_data.energy_score * 100)}% Energy</span>
+          </div>
+        )}
+      </div>
+    );
   };
 
   return (
@@ -80,6 +110,9 @@ const TranscriptSegment = ({
             </div>
           </div>
 
+          {/* Diarization badges */}
+          {renderDiarizationBadges()}
+
           {isEditing ? (
             <Textarea
               value={draftText}
@@ -93,19 +126,36 @@ const TranscriptSegment = ({
             </div>
           )}
 
-          {segment.confidence && (
-            <div className="flex items-center gap-2 mt-2">
+          {/* Confidence bars */}
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground w-24">Transcription:</span>
               <div className="flex-1 h-1 rounded-full bg-muted overflow-hidden">
                 <div
                   className={`h-full rounded-full transition-all duration-500 ${getConfidenceColor(segment.confidence)}`}
                   style={{ width: `${segment.confidence * 100}%` }}
                 />
               </div>
-              <span className="text-xs text-muted-foreground">
-                {(segment.confidence * 100).toFixed(1)}% confidence
+              <span className="text-xs text-muted-foreground w-12 text-right">
+                {(segment.confidence * 100).toFixed(1)}%
               </span>
             </div>
-          )}
+
+            {segment.diarization_data?.energy_score > 0 && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground w-24">Voice Energy:</span>
+                <div className="flex-1 h-1 rounded-full bg-muted overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-blue-500 transition-all duration-500"
+                    style={{ width: `${segment.diarization_data.energy_score * 100}%` }}
+                  />
+                </div>
+                <span className="text-xs text-muted-foreground w-12 text-right">
+                  {(segment.diarization_data.energy_score * 100).toFixed(1)}%
+                </span>
+              </div>
+            )}
+          </div>
         </div>
       </CardContent>
 

@@ -1,3 +1,4 @@
+// File: transcription_engine/static/src/components/theme-provider.jsx
 "use client";
 
 import * as React from "react";

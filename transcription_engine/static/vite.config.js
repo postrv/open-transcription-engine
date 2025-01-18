@@ -8,9 +8,10 @@ import { dirname } from 'path';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+// https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
-  base: '/static/',
+  base: '/',
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
@@ -26,43 +27,64 @@ export default defineConfig({
     }
   },
   server: {
+    port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        target: 'http://127.0.0.1:8000',
         changeOrigin: true,
         secure: false,
-        configure: (proxy, options) => {
-          proxy.on('error', (err, req, res) => {
+        ws: true,
+        configure: (proxy, _options) => {
+          proxy.on('error', (err, _req, res) => {
             console.log('proxy error', err);
+            if (!res.headersSent) {
+              res.writeHead(500, {
+                'Content-Type': 'application/json',
+              });
+              res.end(JSON.stringify({ error: 'Proxy error occurred' }));
+            }
           });
-          proxy.on('proxyReq', (proxyReq, req, res) => {
-            console.log('Sending Request:', req.method, req.url);
+
+          proxy.on('proxyReq', (proxyReq, req, _res) => {
+            // Log the request
+            console.log(`Proxying ${req.method} request to: ${req.url}`);
+
+            // Handle multipart form data properly
+            if (req.body) {
+              const contentType = proxyReq.getHeader('Content-Type');
+              if (contentType && contentType.includes('multipart/form-data')) {
+                // Don't modify multipart form data
+                return;
+              }
+
+              if (contentType === 'application/json') {
+                const bodyData = JSON.stringify(req.body);
+                proxyReq.setHeader('Content-Length', Buffer.byteLength(bodyData));
+                proxyReq.write(bodyData);
+              }
+            }
           });
-          proxy.on('proxyRes', (proxyRes, req, res) => {
-            console.log('Received Response:', proxyRes.statusCode, req.url);
+
+          proxy.on('proxyRes', (proxyRes, req, _res) => {
+            console.log(`Received ${proxyRes.statusCode} for ${req.url}`);
           });
         }
       },
-      '^/ws/.*': {
-        target: 'ws://localhost:8000',
+      '/ws': {
+        target: 'ws://127.0.0.1:8000',
         ws: true,
         changeOrigin: true,
         secure: false,
-        rewrite: (path) => path,
-        configure: (proxy, options) => {
-          proxy.on('error', (err) => {
-            console.log('WebSocket proxy error:', err);
-          });
-        }
       },
       '/uploads': {
-        target: 'http://localhost:8000',
+        target: 'http://127.0.0.1:8000',
         changeOrigin: true,
-        secure: false
+        secure: false,
       }
     },
     hmr: {
-      host: 'localhost'
+      protocol: 'ws',
+      host: 'localhost',
     }
   }
 });

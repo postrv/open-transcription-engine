@@ -1,7 +1,8 @@
+// File: transcription_engine/static/src/components/AudioUpload.jsx
 import React, { useState, useRef, useCallback } from 'react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
-import { Upload, File, XCircle, Loader2 } from 'lucide-react';
+import { Upload, File, XCircle, Loader2, AlertCircle } from 'lucide-react';
 import { Card, CardContent } from './ui/card';
 import ProcessingStatus from './ProcessingStatus';
 import { cn } from '@/lib/utils';
@@ -84,10 +85,13 @@ const AudioUpload = ({ onUploadComplete }) => {
     }));
 
     try {
+      console.log('Uploading file...');
       const response = await fetch('/api/upload-audio', {
         method: 'POST',
         body: formData,
       });
+
+      console.log('Upload response status:', response.status);
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -95,6 +99,8 @@ const AudioUpload = ({ onUploadComplete }) => {
       }
 
       const data = await response.json();
+      console.log('Upload response data:', data);
+
       setState(prev => ({
         ...prev,
         jobId: data.job_id,
@@ -103,6 +109,7 @@ const AudioUpload = ({ onUploadComplete }) => {
 
       onUploadComplete?.(data.url, data.job_id);
     } catch (err) {
+      console.error('Upload error:', err);
       setState(prev => ({
         ...prev,
         error: err.message || 'Failed to upload audio file',
@@ -111,8 +118,7 @@ const AudioUpload = ({ onUploadComplete }) => {
     }
   };
 
-  // Remove the logger import entirely and modify the handler:
-const handleProcessingComplete = useCallback(async (outputPath) => {
+  const handleProcessingComplete = useCallback(async (outputPath) => {
     if (!outputPath) {
       console.error('No output path received');
       return;
@@ -151,7 +157,7 @@ const handleProcessingComplete = useCallback(async (outputPath) => {
         error: `Failed to load transcript: ${error.message}`
       }));
     }
-}, [state.file, onUploadComplete, setState]);
+  }, [state.file, onUploadComplete]);
 
   const { isUploading, error, dragActive, jobId, file } = state;
 

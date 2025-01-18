@@ -170,25 +170,33 @@ class BackgroundProcessor:
         self: "BackgroundProcessor",
         job_id: UUID,
     ) -> AsyncGenerator[ProcessingUpdate, None]:
-        """Watch a job's progress.
-
-        Args:
-            job_id: UUID of the job to watch
-
-        Yields:
-            ProcessingUpdate: Status updates for the job
-        """
+        """Watch a job's progress."""
         if job_id not in self.jobs:
+            logger.error(f"Job not found: {job_id}")
             msg = f"Job not found: {job_id}"
             raise KeyError(msg)
 
         job = self.jobs[job_id]
+        logger.info(f"Starting job watch for {job_id} (status: {job.status})")
+
+        # If job is already complete, yield final status
+        if job.status in {ProcessingStatus.COMPLETED, ProcessingStatus.FAILED}:
+            logger.info(f"Job {job_id} already completed, yielding final status")
+            yield ProcessingUpdate(
+                job_id=job_id,
+                status=job.status,
+                progress=100.0,
+                error=job.error,
+                output_path=str(job.output_path) if job.output_path else None,
+            )
+            return
+
         last_status = job.status
         last_progress = job.progress
 
         while True:
-            # Check if job updated
             if job.status != last_status or abs(job.progress - last_progress) >= 0.01:
+                logger.info(f"Job {job_id} update: {job.status} {job.progress:.1f}%")
                 yield ProcessingUpdate(
                     job_id=job_id,
                     status=job.status,
@@ -199,14 +207,11 @@ class BackgroundProcessor:
                 last_status = job.status
                 last_progress = job.progress
 
-            # Exit if job completed or failed
-            if job.status in {
-                ProcessingStatus.COMPLETED,
-                ProcessingStatus.FAILED,
-            }:
+            if job.status in {ProcessingStatus.COMPLETED, ProcessingStatus.FAILED}:
+                logger.info(f"Job {job_id} finished: {job.status}")
                 break
 
-            await asyncio.sleep(0.1)  # Prevent tight loop
+            await asyncio.sleep(0.1)
 
     async def _process_queue(self: "BackgroundProcessor") -> None:
         """Process jobs from the queue."""

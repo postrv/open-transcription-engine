@@ -32,10 +32,16 @@ background_processor = BackgroundProcessor()
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],  # Development server
+    allow_origins=[
+        "http://localhost:5173",  # Vite dev server
+        "http://localhost:8000",  # FastAPI server
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:8000",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 # Type alias for transcript data
@@ -67,6 +73,7 @@ async def serve_html() -> HTMLResponse:
     <html lang="en">
     <head>
         <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Transcript Timeline</title>
         <link href="/static/styles.css" rel="stylesheet">
@@ -102,21 +109,29 @@ async def load_transcript_endpoint(transcript_data: TranscriptData) -> dict[str,
     return {"status": "success", "segments": len(transcript_data)}
 
 
-@app.get("/api/transcript/{job_id}", response_model=list[dict[str, Any]])  # type: ignore
-async def get_job_transcript_endpoint(job_id: str) -> list[dict[str, Any]]:
-    """Get transcript data for a specific job.
+class TranscriptSegmentResponse(BaseModel):
+    """Enhanced transcript segment response model."""
 
-    Args:
-        job_id: ID of the job to fetch transcript for
+    text: str
+    start: float
+    end: float
+    speaker_id: str | None = None
+    confidence: float = 0.0
+    diarization_data: dict[str, Any] = {}
 
-    Returns:
-        List of transcript segments
 
-    Raises:
-        HTTPException: If transcript file cannot be read or parsed
-    """
+class TranscriptResponse(BaseModel):
+    """Enhanced transcript response model."""
+
+    segments: list[TranscriptSegmentResponse]
+    diarization_metrics: dict[str, Any] | None = None
+
+
+@app.get("/api/transcript/{job_id}", response_model=TranscriptResponse)  # type: ignore
+async def get_job_transcript_endpoint(job_id: str) -> TranscriptResponse:
+    """Get transcript data for a specific job with enhanced diarization info."""
     try:
-        # Clean the job_id to remove any .json extension
+        # Clean the job_id
         job_id = job_id.replace(".json", "")
 
         # Look for specific job's transcript
@@ -132,40 +147,88 @@ async def get_job_transcript_endpoint(job_id: str) -> list[dict[str, Any]]:
         try:
             with open(transcript_file) as f:
                 data: dict[str, Any] = json.load(f)
-                segments: list[dict[str, Any]] = data.get("segments", [])
-                logger.info("Successfully loaded transcript for job %s", job_id)
-                return segments
+
+            # Extract segments and enhance with diarization data
+            raw_segments = data.get("segments", [])
+            enhanced_segments = []
+
+            for segment in raw_segments:
+                # Extract any existing diarization data
+                diarization_data = {
+                    "overlap_detected": segment.get("overlap_detected", False),
+                    "energy_score": segment.get("energy_score", 0.0),
+                    "embedding_similarity": segment.get("embedding_similarity", 0.0),
+                }
+
+                enhanced_segments.append(
+                    TranscriptSegmentResponse(
+                        text=segment["text"],
+                        start=segment["start"],
+                        end=segment["end"],
+                        speaker_id=segment.get("speaker_id"),
+                        confidence=segment.get("confidence", 0.0),
+                        diarization_data=diarization_data,
+                    )
+                )
+
+            # Extract diarization metrics if available
+            diarization_metrics = data.get("diarization_metrics", {})
+
+            response = TranscriptResponse(
+                segments=enhanced_segments, diarization_metrics=diarization_metrics
+            )
+
+            logger.info("Successfully loaded enhanced transcript for job %s", job_id)
+            return response
+
         except (json.JSONDecodeError, KeyError) as e:
             logger.error("Failed to parse transcript file: %s", e)
             raise HTTPException(
                 status_code=500, detail=f"Failed to parse transcript file: {str(e)}"
             ) from e
 
-    except OSError as e:
+    except (OSError, ValueError, KeyError) as e:
         logger.error("Error accessing transcript file: %s", e)
+
         raise HTTPException(
             status_code=500, detail=f"Error accessing transcript file: {str(e)}"
         ) from e
-    except Exception as general_exception:  # noqa: BLE001
-        logger.error("Unexpected error loading transcript: %s", general_exception)
-        raise HTTPException(
-            status_code=500, detail="Internal server error while loading transcript"
-        ) from general_exception
 
 
-@app.get("/api/transcript", response_model=list[dict[str, Any]])  # type: ignore[misc]
-async def get_transcript_endpoint() -> list[dict[str, Any]]:
-    """Get the current transcript data.
+@app.get("/api/transcript", response_model=TranscriptResponse)  # type: ignore
+async def get_transcript_endpoint() -> TranscriptResponse:
+    """Get the current transcript data with diarization info.
 
     Returns:
-        List of transcript segments
-
-    Raises:
-        HTTPException: If transcript file cannot be read or parsed
+        TranscriptResponse: Object containing segments and diarization metrics
     """
+    # No need to use a 404 error if no transcript exists
     if _current_transcript is None:
-        return []
-    return _current_transcript
+        return TranscriptResponse(segments=[], diarization_metrics=None)
+
+    enhanced_segments = []
+    for segment in _current_transcript:
+        diarization_data = {
+            "overlap_detected": segment.get("overlap_detected", False),
+            "energy_score": segment.get("energy_score", 0.0),
+            "embedding_similarity": segment.get("embedding_similarity", 0.0),
+        }
+
+        enhanced_segments.append(
+            TranscriptSegmentResponse(
+                text=segment["text"],
+                start=segment["start"],
+                end=segment["end"],
+                speaker_id=segment.get("speaker_id"),
+                confidence=segment.get("confidence", 0.0),
+                diarization_data=diarization_data,
+            )
+        )
+
+    return TranscriptResponse(
+        segments=enhanced_segments,
+        diarization_metrics=None,  # Keep metrics as None for now
+    )
 
 
 @app.post("/api/redaction", response_model=dict[str, str])  # type: ignore
@@ -277,6 +340,8 @@ async def upload_audio(file: Annotated[UploadFile, File()]) -> dict[str, Any]:
         HTTPException: If there's an error during upload or processing
     """
     try:
+        logger.info(f"Receiving upload: {file.filename}")
+
         # Create uploads directory if it doesn't exist
         uploads_dir = Path("transcription_engine/static/uploads")
         uploads_dir.mkdir(parents=True, exist_ok=True)
@@ -286,13 +351,15 @@ async def upload_audio(file: Annotated[UploadFile, File()]) -> dict[str, Any]:
         file_path = uploads_dir / safe_filename
 
         # Save uploaded file
+        logger.info(f"Saving to: {file_path}")
         with file_path.open("wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
         # Submit processing job
+        logger.info("Submitting processing job")
         job = await background_processor.submit_job(file_path)
+        logger.info(f"Job created: {job.id}")
 
-        # Return both the job ID and file URL
         return {
             "job_id": str(job.id),
             "url": f"/uploads/{safe_filename}",
@@ -300,10 +367,9 @@ async def upload_audio(file: Annotated[UploadFile, File()]) -> dict[str, Any]:
         }
 
     except (OSError, ValueError) as e:
-        logger.error("Error uploading audio: %s", e)
+        logger.error(f"Upload error: {str(e)}", exc_info=True)
         raise HTTPException(
-            status_code=500,
-            detail=str(e),
+            status_code=500, detail=f"File upload failed: {str(e)}"
         ) from e
 
 

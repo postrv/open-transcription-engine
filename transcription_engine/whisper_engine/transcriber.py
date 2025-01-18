@@ -8,7 +8,7 @@ standard Whisper and insanely-fast-whisper backends for optimal performance.
 import logging
 import warnings
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, TypeVar
 
@@ -37,6 +37,7 @@ class TranscriptionSegment:
     end: float  # End time in seconds
     speaker_id: str | None = None
     confidence: float = 0.0
+    diarization_data: dict[str, Any] = field(default_factory=dict)
 
 
 class WhisperManager:

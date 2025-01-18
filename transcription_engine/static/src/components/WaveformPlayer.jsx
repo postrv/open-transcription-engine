@@ -1,3 +1,4 @@
+// File: transcription_engine/static/src/components/WaveformPlayer.jsx
 import React, { useEffect, useRef, useState } from 'react';
 import WaveSurfer from 'wavesurfer.js';
 import { Play, Pause, SkipBack, SkipForward, ZoomIn, ZoomOut } from 'lucide-react';

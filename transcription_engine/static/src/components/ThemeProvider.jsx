@@ -1,3 +1,4 @@
+// File: transcription_engine/static/src/components/ThemeProvider.jsx
 import React, { createContext, useContext, useEffect, useState } from "react"
 
 const ThemeProviderContext = createContext({
