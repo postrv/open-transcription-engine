@@ -1,6 +1,6 @@
 # File: config/default.yml
 whisper:
-  model_size: small  # Using small model for now
+  model_size: large  # Using small model for now
   device: mps  # Explicitly use MPS on Apple Silicon
   language: en
   batch_size: 8  # Reduced for better MPS memory management
