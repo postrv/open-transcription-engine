@@ -256,7 +256,20 @@ class WhisperManager:
         sample_rate: int,
         progress_callback: Callable[[float], None] | None = None,
     ) -> list[TranscriptionSegment]:
-        """Transcribe audio data into text with timestamps."""
+        """Transcribe audio data into text with timestamps.
+
+        Args:
+            audio_data: Input audio data array
+            sample_rate: Sample rate of the input audio
+            progress_callback: Optional callback for progress updates
+
+        Returns:
+            List of transcription segments
+
+        Raises:
+            RuntimeError: If model not loaded
+            ValueError: If audio data is empty
+        """
         if self.model is None:
             msg = "Model not loaded. Call load_model() first."
             raise RuntimeError(msg)
@@ -270,11 +283,12 @@ class WhisperManager:
             audio_data = self._prepare_audio(audio_data, sample_rate)
 
             # Run transcription with optimized settings
+            # Note: Pass audio data in the format expected by transformers pipeline
             result = self.model(
-                audio_data,
+                {"raw": audio_data, "sampling_rate": 16000},  # We've resampled to 16kHz
                 chunk_length_s=self.config.chunk_length_s,
                 batch_size=self.config.batch_size,
-                return_timestamps=True,  # Changed from "word" to True
+                return_timestamps=True,
                 generate_kwargs={
                     "language": self.config.language
                     if self.config.language != "auto"
