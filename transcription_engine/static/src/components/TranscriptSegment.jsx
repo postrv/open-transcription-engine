@@ -148,10 +148,11 @@ const TranscriptSegment = ({
             <div className="flex items-center gap-2">
               {/* Confidence Indicator */}
               <div className="flex items-center gap-1">
-                {segment.confidence >= 0.85 ? (
-                  <div className="flex items-center gap-1 text-green-500 animate-bounce">
+                {segment.confidence || segment.ai_correction_confidence >= 0.85 ? (
+                  <div className="flex items-center gap-1 text-green-500">
                     <CheckCircle2 className="h-4 w-4" />
-                    {showCelebration && <Sparkles className="h-4 w-4" />}
+                    <span className="text-xs font-medium">High confidence</span>
+                    {showCelebration && <Sparkles className="h-4 w-4 animate-bounce" />}
                   </div>
                 ) : segment.confidence < 0.7 ? (
                   <div className="flex items-center gap-1 text-yellow-500">
