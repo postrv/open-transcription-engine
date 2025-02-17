@@ -67,3 +67,4 @@ dependencies:
     - httpx>=0.27.0
     - scipy
     - insanely-fast-whisper>=0.0.15  # Added for optimized Whisper
+    - openai>=1.63.2

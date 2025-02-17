@@ -10,7 +10,9 @@ import {
   Clock,
   AlertTriangle,
   Users,
-  Volume2
+  Volume2,
+  Wand2,
+  Loader2,
 } from 'lucide-react';
 import SpeakerSelect from "./ui/speaker-select";
 
@@ -21,6 +23,7 @@ const TranscriptSegment = ({
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [isSpeakerEditing, setIsSpeakerEditing] = useState(false);
+  const [isCorrectingWithAI, setIsCorrectingWithAI] = useState(false);
   const [draftText, setDraftText] = useState(segment.text);
 
   const handleSave = () => {
@@ -34,6 +37,43 @@ const TranscriptSegment = ({
   const handleCancel = () => {
     setIsEditing(false);
     setDraftText(segment.text);
+  };
+
+  const handleAICorrection = async () => {
+    try {
+      setIsCorrectingWithAI(true);
+      const response = await fetch('/api/correct-segment', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          segment_id: index,
+          text: segment.text,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail || 'Failed to correct segment');
+      }
+
+      const data = await response.json();
+
+      // Only update if there were actual changes
+      if (data.corrected_text !== segment.text) {
+        onSegmentUpdate?.(index, {
+          ...segment,
+          text: data.corrected_text,
+          ai_correction_confidence: data.confidence,
+          last_correction: new Date().toISOString(),
+        });
+      }
+    } catch (error) {
+      console.error('Error correcting segment:', error);
+    } finally {
+      setIsCorrectingWithAI(false);
+    }
   };
 
   const handleSpeakerUpdate = (newSpeakerId) => {
@@ -84,7 +124,8 @@ const TranscriptSegment = ({
             </div>
 
             <div className="flex items-center gap-2">
-              {segment.confidence < 0.7 && (
+              {/* Update confidence warning to consider AI corrections */}
+              {(segment.confidence < 0.7 && (!segment.ai_correction_confidence || segment.ai_correction_confidence < 0.7)) && (
                 <div className="flex items-center gap-1 text-yellow-500">
                   <AlertTriangle className="h-4 w-4" />
                   <span className="text-xs">Low confidence</span>
@@ -158,43 +199,76 @@ const TranscriptSegment = ({
                 </span>
               </div>
             )}
+
+            {segment.ai_correction_confidence > 0 && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground w-24">AI Correction:</span>
+                <div className="flex-1 h-1 rounded-full bg-muted overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-purple-500 transition-all duration-500"
+                    style={{ width: `${segment.ai_correction_confidence * 100}%` }}
+                  />
+                </div>
+                <span className="text-xs text-muted-foreground w-12 text-right">
+                  {(segment.ai_correction_confidence * 100).toFixed(1)}%
+                </span>
+              </div>
+            )}
           </div>
         </div>
       </CardContent>
 
       <CardFooter className="px-4 py-2 border-t">
-        {!isEditing ? (
-          <Button
-            onClick={() => setIsEditing(true)}
-            variant="ghost"
-            size="sm"
-            className="text-muted-foreground hover:text-foreground gap-2"
-          >
-            <Edit className="h-4 w-4" />
-            Edit
-          </Button>
-        ) : (
-          <div className="flex gap-2">
-            <Button
-              onClick={handleSave}
-              variant="default"
-              size="sm"
-              className="gap-2"
-            >
-              <Save className="h-4 w-4" />
-              Save (Ctrl+Enter)
-            </Button>
-            <Button
-              onClick={handleCancel}
-              variant="ghost"
-              size="sm"
-              className="gap-2 text-destructive hover:bg-destructive/10"
-            >
-              <X className="h-4 w-4" />
-              Cancel (Esc)
-            </Button>
-          </div>
-        )}
+        <div className="flex gap-2">
+          {!isEditing ? (
+            <>
+              <Button
+                onClick={() => setIsEditing(true)}
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground hover:text-foreground gap-2"
+              >
+                <Edit className="h-4 w-4" />
+                Edit
+              </Button>
+              <Button
+                onClick={handleAICorrection}
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground hover:text-foreground gap-2"
+                disabled={isCorrectingWithAI}
+              >
+                {isCorrectingWithAI ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Wand2 className="h-4 w-4" />
+                )}
+                Fix with AI
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button
+                onClick={handleSave}
+                variant="default"
+                size="sm"
+                className="gap-2"
+              >
+                <Save className="h-4 w-4" />
+                Save (Ctrl+Enter)
+              </Button>
+              <Button
+                onClick={handleCancel}
+                variant="ghost"
+                size="sm"
+                className="gap-2 text-destructive hover:bg-destructive/10"
+              >
+                <X className="h-4 w-4" />
+                Cancel (Esc)
+              </Button>
+            </>
+          )}
+        </div>
       </CardFooter>
     </Card>
   );

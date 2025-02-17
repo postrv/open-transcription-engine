@@ -189,7 +189,7 @@ const ProcessingStatus = ({ jobId, onComplete }) => {
       case 'connected':
         return 'Connected, awaiting updates...';
       case 'disconnected':
-        return 'Connection lost - attempting to reconnect...';
+        return 'Connecting...';
       case 'queued':
         return 'Waiting in processing queue...';
       case 'loading':

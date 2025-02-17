@@ -18,9 +18,11 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from ..ai_correction import openai_manager
 from ..processing.background_processor import BackgroundProcessor
 from ..utils.config import config_manager
 from .websocket_manager import websocket_manager
+from ..ai_correction.openai_manager import OpenAIManager
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -59,6 +61,29 @@ class RedactionRequest(BaseModel):
     end_time: float
     text: str
     reason: str
+
+
+try:
+    openai_manager = OpenAIManager()
+except ValueError as e:
+    logger.error("Failed to initialize OpenAI manager: %s", e)
+    openai_manager = None
+
+
+# Add these model classes after existing model definitions
+class CorrectionRequest(BaseModel):
+    """Request model for AI correction."""
+
+    segment_id: int
+    text: str
+
+
+class CorrectionResponse(BaseModel):
+    """Response model for AI correction."""
+
+    original_text: str
+    corrected_text: str
+    confidence: float
 
 
 @app.get("/", response_class=HTMLResponse)  # type: ignore
@@ -370,6 +395,40 @@ async def upload_audio(file: Annotated[UploadFile, File()]) -> dict[str, Any]:
         logger.error(f"Upload error: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500, detail=f"File upload failed: {str(e)}"
+        ) from e
+
+
+@app.post("/api/correct-segment", response_model=CorrectionResponse)  # type: ignore
+async def correct_segment_endpoint(request: CorrectionRequest) -> CorrectionResponse:
+    """Correct a transcript segment using AI.
+
+    Args:
+        request: CorrectionRequest containing segment ID and text
+
+    Returns:
+        CorrectionResponse with original and corrected text
+
+    Raises:
+        HTTPException: If correction fails or OpenAI is not available
+    """
+    if openai_manager is None:
+        raise HTTPException(
+            status_code=503,
+            detail="OpenAI integration not available. Check API key configuration.",
+        )
+
+    try:
+        correction = openai_manager.correct_segment(request.text)
+        return CorrectionResponse(
+            original_text=correction.original_text,
+            corrected_text=correction.corrected_text,
+            confidence=correction.confidence,
+        )
+    except Exception as e:
+        logger.error("Error correcting segment: %s", e)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to correct segment: {str(e)}",
         ) from e
 
 
