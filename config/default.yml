@@ -7,7 +7,7 @@ whisper:
   compute_type: float32  # MPS works better with float32
   backend: transformers
   attn_implementation: sdpa  # Using SDPA since Flash Attention isn't available
-  chunk_length_s: 15
+  chunk_length_s: 5
   progress_bar: true
   use_cache: true
   cache_dir: ~/.cache/whisper
