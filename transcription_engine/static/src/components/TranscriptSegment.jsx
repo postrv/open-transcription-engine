@@ -2,18 +2,17 @@
 import React, { useState } from "react";
 import { Card, CardContent, CardFooter } from "./ui/card";
 import { Button } from "./ui/button";
-import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
 import {
   Edit,
   Save,
   X,
   Clock,
-  User,
   AlertTriangle,
   Users,
   Volume2
 } from 'lucide-react';
+import SpeakerSelect from "./ui/speaker-select";
 
 const TranscriptSegment = ({
   segment,
@@ -21,22 +20,27 @@ const TranscriptSegment = ({
   index,
 }) => {
   const [isEditing, setIsEditing] = useState(false);
+  const [isSpeakerEditing, setIsSpeakerEditing] = useState(false);
   const [draftText, setDraftText] = useState(segment.text);
-  const [draftSpeaker, setDraftSpeaker] = useState(segment.speaker_id || "");
 
   const handleSave = () => {
     setIsEditing(false);
     onSegmentUpdate?.(index, {
       ...segment,
       text: draftText,
-      speaker_id: draftSpeaker,
     });
   };
 
   const handleCancel = () => {
     setIsEditing(false);
     setDraftText(segment.text);
-    setDraftSpeaker(segment.speaker_id || "");
+  };
+
+  const handleSpeakerUpdate = (newSpeakerId) => {
+    onSegmentUpdate?.(index, {
+      ...segment,
+      speaker_id: newSpeakerId,
+    });
   };
 
   const getConfidenceColor = (confidence) => {
@@ -45,7 +49,6 @@ const TranscriptSegment = ({
     return 'bg-red-500';
   };
 
-  // Helper to render diarization badges
   const renderDiarizationBadges = () => {
     const { diarization_data = {} } = segment;
     return (
@@ -88,29 +91,17 @@ const TranscriptSegment = ({
                 </div>
               )}
 
-              {isEditing ? (
-                <div className="flex items-center gap-2">
-                  <User className="h-4 w-4 text-muted-foreground" />
-                  <Input
-                    type="text"
-                    value={draftSpeaker}
-                    onChange={(e) => setDraftSpeaker(e.target.value)}
-                    className="w-40 h-8"
-                    placeholder="Speaker"
-                  />
-                </div>
-              ) : (
-                segment.speaker_id && (
-                  <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-secondary">
-                    <User className="h-4 w-4" />
-                    <span className="text-sm font-medium">{segment.speaker_id}</span>
-                  </div>
-                )
-              )}
+              <SpeakerSelect
+                value={segment.speaker_id}
+                onValueChange={handleSpeakerUpdate}
+                isEditing={isSpeakerEditing}
+                onEditStart={() => setIsSpeakerEditing(true)}
+                onEditCancel={() => setIsSpeakerEditing(false)}
+                onEditComplete={() => setIsSpeakerEditing(false)}
+              />
             </div>
           </div>
 
-          {/* Diarization badges */}
           {renderDiarizationBadges()}
 
           {isEditing ? (
@@ -119,14 +110,26 @@ const TranscriptSegment = ({
               onChange={(e) => setDraftText(e.target.value)}
               className="mt-2 min-h-[100px] text-base"
               rows={4}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && e.ctrlKey) {
+                  handleSave();
+                }
+                if (e.key === 'Escape') {
+                  handleCancel();
+                }
+              }}
+              placeholder="Enter transcript text..."
+              autoFocus
             />
           ) : (
-            <div className="mt-2 text-base leading-relaxed">
+            <div
+              className="mt-2 text-base leading-relaxed cursor-pointer hover:bg-muted/50 p-2 rounded-md"
+              onClick={() => setIsEditing(true)}
+            >
               {segment.text}
             </div>
           )}
 
-          {/* Confidence bars */}
           <div className="flex flex-col gap-1">
             <div className="flex items-center gap-2">
               <span className="text-xs text-muted-foreground w-24">Transcription:</span>
@@ -179,7 +182,7 @@ const TranscriptSegment = ({
               className="gap-2"
             >
               <Save className="h-4 w-4" />
-              Save
+              Save (Ctrl+Enter)
             </Button>
             <Button
               onClick={handleCancel}
@@ -188,7 +191,7 @@ const TranscriptSegment = ({
               className="gap-2 text-destructive hover:bg-destructive/10"
             >
               <X className="h-4 w-4" />
-              Cancel
+              Cancel (Esc)
             </Button>
           </div>
         )}
