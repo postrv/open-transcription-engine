@@ -33,7 +33,7 @@ class TranscriptCorrection(BaseModel):
 class OpenAIManager:
     """Manages OpenAI API interactions for transcript correction."""
 
-    CORRECTION_PROMPT = """You are a professional legal transcript editor. 
+    CORRECTION_PROMPT = """You are a professional legal transcript editor tasked with transcribing the Amber Heard vs Johnny Depp hearing. 
 Please correct any mistakes in this court transcript excerpt, returning only the corrected text. 
 Maintain formal language and legal terminology. If no corrections are needed, return the original text.
 

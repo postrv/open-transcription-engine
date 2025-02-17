@@ -1,5 +1,4 @@
-// File: transcription_engine/static/src/components/TranscriptSegment.jsx
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardFooter } from "./ui/card";
 import { Button } from "./ui/button";
 import { Textarea } from "./ui/textarea";
@@ -13,8 +12,11 @@ import {
   Volume2,
   Wand2,
   Loader2,
-} from 'lucide-react';
+  CheckCircle2,
+  Sparkles,
+} from "lucide-react";
 import SpeakerSelect from "./ui/speaker-select";
+import { cn } from "@/lib/utils";
 
 const TranscriptSegment = ({
   segment,
@@ -25,6 +27,22 @@ const TranscriptSegment = ({
   const [isSpeakerEditing, setIsSpeakerEditing] = useState(false);
   const [isCorrectingWithAI, setIsCorrectingWithAI] = useState(false);
   const [draftText, setDraftText] = useState(segment.text);
+  const [showCelebration, setShowCelebration] = useState(false);
+
+  // Track confidence changes for animation
+  const [previousConfidence, setPreviousConfidence] = useState(segment.confidence);
+  const [confidenceImproved, setConfidenceImproved] = useState(false);
+
+  useEffect(() => {
+    if (segment.confidence > previousConfidence) {
+      setConfidenceImproved(true);
+      if (segment.confidence >= 0.85) {
+        setShowCelebration(true);
+        setTimeout(() => setShowCelebration(false), 2000); // Hide celebration after 2s
+      }
+    }
+    setPreviousConfidence(segment.confidence);
+  }, [segment.confidence, previousConfidence]);
 
   const handleSave = () => {
     setIsEditing(false);
@@ -42,10 +60,10 @@ const TranscriptSegment = ({
   const handleAICorrection = async () => {
     try {
       setIsCorrectingWithAI(true);
-      const response = await fetch('/api/correct-segment', {
-        method: 'POST',
+      const response = await fetch("/api/correct-segment", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           segment_id: index,
@@ -55,7 +73,7 @@ const TranscriptSegment = ({
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.detail || 'Failed to correct segment');
+        throw new Error(error.detail || "Failed to correct segment");
       }
 
       const data = await response.json();
@@ -70,7 +88,7 @@ const TranscriptSegment = ({
         });
       }
     } catch (error) {
-      console.error('Error correcting segment:', error);
+      console.error("Error correcting segment:", error);
     } finally {
       setIsCorrectingWithAI(false);
     }
@@ -84,9 +102,9 @@ const TranscriptSegment = ({
   };
 
   const getConfidenceColor = (confidence) => {
-    if (confidence >= 0.9) return 'bg-green-500';
-    if (confidence >= 0.7) return 'bg-yellow-500';
-    return 'bg-red-500';
+    if (confidence >= 0.9) return "bg-green-500";
+    if (confidence >= 0.7) return "bg-yellow-500";
+    return "bg-red-500";
   };
 
   const renderDiarizationBadges = () => {
@@ -110,11 +128,15 @@ const TranscriptSegment = ({
   };
 
   return (
-    <Card className={`
-      w-full transition-all duration-300
-      hover:shadow-md
-      ${isEditing ? 'ring-2 ring-primary' : ''}
-    `}>
+    <Card
+      className={cn(
+        "w-full transition-all duration-300",
+        "hover:shadow-md",
+        isEditing && "ring-2 ring-primary",
+        confidenceImproved && "animate-pulse",
+        showCelebration && "ring-2 ring-green-500"
+      )}
+    >
       <CardContent className="p-4">
         <div className="flex flex-col gap-3">
           <div className="flex justify-between items-start">
@@ -124,13 +146,20 @@ const TranscriptSegment = ({
             </div>
 
             <div className="flex items-center gap-2">
-              {/* Update confidence warning to consider AI corrections */}
-              {(segment.confidence < 0.7 && (!segment.ai_correction_confidence || segment.ai_correction_confidence < 0.7)) && (
-                <div className="flex items-center gap-1 text-yellow-500">
-                  <AlertTriangle className="h-4 w-4" />
-                  <span className="text-xs">Low confidence</span>
-                </div>
-              )}
+              {/* Confidence Indicator */}
+              <div className="flex items-center gap-1">
+                {segment.confidence >= 0.85 ? (
+                  <div className="flex items-center gap-1 text-green-500 animate-bounce">
+                    <CheckCircle2 className="h-4 w-4" />
+                    {showCelebration && <Sparkles className="h-4 w-4" />}
+                  </div>
+                ) : segment.confidence < 0.7 ? (
+                  <div className="flex items-center gap-1 text-yellow-500">
+                    <AlertTriangle className="h-4 w-4" />
+                    <span className="text-xs">Low confidence</span>
+                  </div>
+                ) : null}
+              </div>
 
               <SpeakerSelect
                 value={segment.speaker_id}
@@ -152,10 +181,10 @@ const TranscriptSegment = ({
               className="mt-2 min-h-[100px] text-base"
               rows={4}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && e.ctrlKey) {
+                if (e.key === "Enter" && e.ctrlKey) {
                   handleSave();
                 }
-                if (e.key === 'Escape') {
+                if (e.key === "Escape") {
                   handleCancel();
                 }
               }}
@@ -164,7 +193,11 @@ const TranscriptSegment = ({
             />
           ) : (
             <div
-              className="mt-2 text-base leading-relaxed cursor-pointer hover:bg-muted/50 p-2 rounded-md"
+              className={cn(
+                "mt-2 text-base leading-relaxed cursor-pointer p-2 rounded-md",
+                "hover:bg-muted/50",
+                segment.confidence >= 0.85 && "bg-green-50 dark:bg-green-950/10"
+              )}
               onClick={() => setIsEditing(true)}
             >
               {segment.text}
@@ -176,7 +209,10 @@ const TranscriptSegment = ({
               <span className="text-xs text-muted-foreground w-24">Transcription:</span>
               <div className="flex-1 h-1 rounded-full bg-muted overflow-hidden">
                 <div
-                  className={`h-full rounded-full transition-all duration-500 ${getConfidenceColor(segment.confidence)}`}
+                  className={cn(
+                    "h-full rounded-full transition-all duration-500",
+                    getConfidenceColor(segment.confidence)
+                  )}
                   style={{ width: `${segment.confidence * 100}%` }}
                 />
               </div>
@@ -205,7 +241,10 @@ const TranscriptSegment = ({
                 <span className="text-xs text-muted-foreground w-24">AI Correction:</span>
                 <div className="flex-1 h-1 rounded-full bg-muted overflow-hidden">
                   <div
-                    className="h-full rounded-full bg-purple-500 transition-all duration-500"
+                    className={cn(
+                      "h-full rounded-full transition-all duration-500",
+                      segment.ai_correction_confidence >= 0.85 ? "bg-green-500" : "bg-purple-500"
+                    )}
                     style={{ width: `${segment.ai_correction_confidence * 100}%` }}
                   />
                 </div>
