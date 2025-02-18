@@ -19,11 +19,7 @@ import {
 import SpeakerSelect from "./ui/speaker-select";
 import { cn } from "@/lib/utils";
 
-const TranscriptSegment = ({
-  segment,
-  onSegmentUpdate,
-  index,
-}) => {
+const TranscriptSegment = ({ segment, onSegmentUpdate, index }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [isSpeakerEditing, setIsSpeakerEditing] = useState(false);
   const [isCorrectingWithAI, setIsCorrectingWithAI] = useState(false);
@@ -86,24 +82,24 @@ const TranscriptSegment = ({
 
       // Ensure we have valid text content
       if (!container || !container.textContent) {
-        console.error('Invalid selection container:', container);
+        console.error("Invalid selection container:", container);
         return;
       }
 
       const start = Math.min(selection.anchorOffset, selection.focusOffset);
       const end = Math.max(selection.anchorOffset, selection.focusOffset);
 
-      console.log('Selection details:', {
+      console.log("Selection details:", {
         selectedText,
         start,
         end,
-        container: container.textContent
+        container: container.textContent,
       });
 
       setSelection({
         text: selectedText,
         start,
-        end
+        end,
       });
       setShowSplitUI(true);
     } else {
@@ -120,7 +116,7 @@ const TranscriptSegment = ({
     const endTime = parseFloat(segment.end);
 
     if (isNaN(startTime) || isNaN(endTime)) {
-      console.error('Invalid segment timing:', { start: segment.start, end: segment.end });
+      console.error("Invalid segment timing:", { start: segment.start, end: segment.end });
       return;
     }
 
@@ -133,8 +129,8 @@ const TranscriptSegment = ({
     const selectionEndPct = selection.end / totalChars;
 
     // Calculate absolute timestamps
-    const selectionStartTime = startTime + (totalDuration * selectionStartPct);
-    const selectionEndTime = startTime + (totalDuration * selectionEndPct);
+    const selectionStartTime = startTime + totalDuration * selectionStartPct;
+    const selectionEndTime = startTime + totalDuration * selectionEndPct;
 
     // Create segments array
     const newSegments = [];
@@ -168,27 +164,27 @@ const TranscriptSegment = ({
     }
 
     // Validate all segments have proper timestamps and non-empty text
-    if (newSegments.some(seg =>
-      isNaN(seg.start) ||
-      isNaN(seg.end) ||
-      seg.start >= seg.end ||
-      !seg.text.trim()
-    )) {
-      console.error('Invalid segment generated:', newSegments);
+    if (
+      newSegments.some(
+        (seg) =>
+          isNaN(seg.start) ||
+          isNaN(seg.end) ||
+          seg.start >= seg.end ||
+          !seg.text.trim()
+      )
+    ) {
+      console.error("Invalid segment generated:", newSegments);
       return;
     }
 
-    // Log the split operation for debugging
-    console.log('Split operation:', {
+    console.log("Split operation:", {
       original: segment,
       selection,
-      newSegments
+      newSegments,
     });
 
-    // Notify parent of the split
     onSegmentUpdate?.(index, newSegments);
 
-    // Reset selection state
     setSelection(null);
     setShowSplitUI(false);
   };
@@ -214,7 +210,6 @@ const TranscriptSegment = ({
 
       const data = await response.json();
 
-      // Only update if there were actual changes
       if (data.corrected_text !== segment.text) {
         onSegmentUpdate?.(index, {
           ...segment,
@@ -304,9 +299,7 @@ const TranscriptSegment = ({
               <Clock className="h-4 w-4" />
               <span>{`${segment.start.toFixed(2)}s - ${segment.end.toFixed(2)}s`}</span>
             </div>
-
             <div className="flex items-center gap-2">
-              {/* Confidence Indicator */}
               <div className="flex items-center gap-1">
                 {isHighConfidence ? (
                   <div className="flex items-center gap-1 text-green-500">
@@ -321,7 +314,6 @@ const TranscriptSegment = ({
                   </div>
                 ) : null}
               </div>
-
               <SpeakerSelect
                 value={segment.speaker_id}
                 onValueChange={handleSpeakerUpdate}
@@ -342,7 +334,6 @@ const TranscriptSegment = ({
               className="mt-2 min-h-[100px] text-base"
               rows={4}
               onKeyDown={(e) => {
-                // Support both Ctrl and Cmd (Meta) key for cross-platform
                 if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
                   e.preventDefault();
                   handleSave();
@@ -369,116 +360,124 @@ const TranscriptSegment = ({
                 {segment.text}
               </div>
               {showSplitUI && selection && (
-                  <div className="flex flex-col gap-2 mt-2 p-3 bg-muted rounded-md border border-muted-foreground/20">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <p className="text-sm font-medium">Split segment at selection</p>
-                        <div className="text-sm text-muted-foreground mt-1">
-                          Will create {selection.start > 0 && selection.end < segment.text.length ? "3" : "2"} segments
-                        </div>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          setSelection(null);
-                          setShowSplitUI(false);
-                        }}
-                        className="text-muted-foreground hover:text-foreground"
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
-                    </div>
-
-                    {renderSplitPreview()}
-
-                    <div className="flex gap-2 text-xs text-muted-foreground mt-1">
-                      <div className="flex items-center gap-1">
-                        <Clock className="h-3 w-3" />
-                        <span>Total duration: {((segment.end - segment.start) * 100) / 100}s</span>
+                <div className="flex flex-col gap-2 mt-2 p-3 bg-muted rounded-md border border-muted-foreground/20">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <p className="text-sm font-medium">Split segment at selection</p>
+                      <div className="text-sm text-muted-foreground mt-1">
+                        Will create{" "}
+                        {selection.start > 0 && selection.end < segment.text.length
+                          ? "3"
+                          : "2"}{" "}
+                        segments
                       </div>
                     </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setSelection(null);
+                        setShowSplitUI(false);
+                      }}
+                      className="text-muted-foreground hover:text-foreground"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
 
-                    <div className="flex justify-end gap-2 mt-2">
-                      <Button
-                        onClick={handleSplit}
-                        variant="secondary"
-                        size="sm"
-                        className="gap-2"
-                      >
-                        <Scissors className="h-4 w-4" />
-                        Split segment
-                      </Button>
-                      <Button
-                        onClick={() => {
-                          setSelection(null);
-                          setShowSplitUI(false);
-                        }}
-                        variant="ghost"
-                        size="sm"
-                        className="text-destructive hover:bg-destructive/10"
-                      >
-                        <X className="h-4 w-4" />
-                        Cancel
-                      </Button>
+                  {renderSplitPreview()}
+
+                  <div className="flex gap-2 text-xs text-muted-foreground mt-1">
+                    <div className="flex items-center gap-1">
+                      <Clock className="h-3 w-3" />
+                      <span>
+                        Total duration: {((segment.end - segment.start) * 100) / 100}s
+                      </span>
                     </div>
                   </div>
+
+                  <div className="flex justify-end gap-2 mt-2">
+                    <Button
+                      onClick={handleSplit}
+                      variant="secondary"
+                      size="sm"
+                      className="gap-2"
+                    >
+                      <Scissors className="h-4 w-4" />
+                      Split segment
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        setSelection(null);
+                        setShowSplitUI(false);
+                      }}
+                      variant="ghost"
+                      size="sm"
+                      className="text-destructive hover:bg-destructive/10"
+                    >
+                      <X className="h-4 w-4" />
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
               )}
             </>
           )}
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground w-24">Transcription:</span>
-              <div className="flex-1 h-1 rounded-full bg-muted overflow-hidden">
-                <div
-                  className={cn(
-                    "h-full rounded-full transition-all duration-500",
-                    getEffectiveConfidence() >= 0.85 ? "bg-green-500" :
-                    getEffectiveConfidence() >= 0.7 ? "bg-yellow-500" :
-                    "bg-red-500"
-                  )}
-                  style={{ width: `${getEffectiveConfidence() * 100}%` }}
-                />
-              </div>
-              <span className="text-xs text-muted-foreground w-12 text-right">
-                {(getEffectiveConfidence() * 100).toFixed(1)}%
-              </span>
-            </div>
-
-            {segment.diarization_data?.energy_score > 0 && (
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground w-24">Voice Energy:</span>
-                <div className="flex-1 h-1 rounded-full bg-muted overflow-hidden">
-                  <div
-                    className="h-full rounded-full bg-blue-500 transition-all duration-500"
-                    style={{ width: `${segment.diarization_data.energy_score * 100}%` }}
-                  />
-                </div>
-                <span className="text-xs text-muted-foreground w-12 text-right">
-                  {(segment.diarization_data.energy_score * 100).toFixed(1)}%
-                </span>
-              </div>
-            )}
-
-            {segment.ai_correction_confidence > 0 && (
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground w-24">AI Correction:</span>
-                <div className="flex-1 h-1 rounded-full bg-muted overflow-hidden">
-                  <div
-                    className={cn(
-                      "h-full rounded-full transition-all duration-500",
-                      segment.ai_correction_confidence >= 0.85 ? "bg-green-500" : "bg-purple-500"
-                    )}
-                    style={{ width: `${segment.ai_correction_confidence * 100}%` }}
-                  />
-                </div>
-                <span className="text-xs text-muted-foreground w-12 text-right">
-                  {(segment.ai_correction_confidence * 100).toFixed(1)}%
-                </span>
-              </div>
-            )}
-          </div>
         </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground w-24">Transcription:</span>
+          <div className="flex-1 h-1 rounded-full bg-muted overflow-hidden">
+            <div
+              className={cn(
+                "h-full rounded-full transition-all duration-500",
+                (segment.confidence || 0) >= 0.85
+                  ? "bg-green-500"
+                  : (segment.confidence || 0) >= 0.7
+                  ? "bg-yellow-500"
+                  : "bg-red-500"
+              )}
+              style={{ width: `${(segment.confidence || 0) * 100}%` }}
+            />
+          </div>
+          <span className="text-xs text-muted-foreground w-12 text-right">
+            {((segment.confidence || 0) * 100).toFixed(1)}%
+          </span>
+        </div>
+
+        {segment.diarization_data?.energy_score > 0 && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground w-24">Voice Energy:</span>
+            <div className="flex-1 h-1 rounded-full bg-muted overflow-hidden">
+              <div
+                className="h-full rounded-full bg-blue-500 transition-all duration-500"
+                style={{ width: `${segment.diarization_data.energy_score * 100}%` }}
+              />
+            </div>
+            <span className="text-xs text-muted-foreground w-12 text-right">
+              {(segment.diarization_data.energy_score * 100).toFixed(1)}%
+            </span>
+          </div>
+        )}
+
+        {segment.ai_correction_confidence > 0 && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground w-24">AI Correction:</span>
+            <div className="flex-1 h-1 rounded-full bg-muted overflow-hidden">
+              <div
+                className={cn(
+                  "h-full rounded-full transition-all duration-500",
+                  segment.ai_correction_confidence >= 0.85
+                    ? "bg-green-500"
+                    : "bg-purple-500"
+                )}
+                style={{ width: `${segment.ai_correction_confidence * 100}%` }}
+              />
+            </div>
+            <span className="text-xs text-muted-foreground w-12 text-right">
+              {(segment.ai_correction_confidence * 100).toFixed(1)}%
+            </span>
+          </div>
+        )}
       </CardContent>
 
       <CardFooter className="px-4 py-2 border-t">
