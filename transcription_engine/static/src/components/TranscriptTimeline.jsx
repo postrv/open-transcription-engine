@@ -135,9 +135,24 @@ const TranscriptTimeline = ({
     setLocalSegments(prev => {
       if (!Array.isArray(prev)) return prev;
       const newList = [...prev];
-      newList[index] = updatedSeg;
-      onUpdate?.(newList);
-      return newList;
+
+      // Handle split segments (when updatedSeg is an array)
+      if (Array.isArray(updatedSeg)) {
+        // Remove the original segment
+        newList.splice(index, 1);
+        // Insert the new segments in its place
+        newList.splice(index, 0, ...updatedSeg);
+      } else {
+        // Regular single segment update
+        newList[index] = updatedSeg;
+      }
+
+      // Re-sort segments by start time to maintain order
+      const sortedList = newList.sort((a, b) => a.start - b.start);
+
+      // Notify parent of update
+      onUpdate?.(sortedList);
+      return sortedList;
     });
   }, [onUpdate]);
 
@@ -236,7 +251,7 @@ const TranscriptTimeline = ({
         <div className="space-y-4">
           {visibleSegments?.map((segment, index) => (
             <div
-              key={segment.start}
+              key={`${segment.start}-${segment.end}`}
               id={`segment-${segment.start}`}
               className={cn(
                 "transition-all duration-200",
