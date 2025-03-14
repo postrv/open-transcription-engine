@@ -2,6 +2,8 @@
 
 A local/offline transcription engine focused on generating accurate and privacy-respecting court transcripts.
 
+<img src="output.gif">
+
 ### Project Status: Beta Development
 
 ## ✅ Working Features
